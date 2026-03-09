@@ -36,7 +36,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
     name: '',
     type: DatabaseType.PostgreSQL as DatabaseType,
     host: 'localhost',
-    port: 5432,
+    port: '5432',
     database: '',
     username: '',
     password: '',
@@ -54,7 +54,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         name: editConnection.name,
         type: editConnection.type,
         host: editConnection.host,
-        port: editConnection.port,
+        port: String(editConnection.port),
         database: editConnection.database,
         username: editConnection.username,
         password: editConnection.password,
@@ -66,7 +66,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         name: '',
         type: DatabaseType.PostgreSQL,
         host: 'localhost',
-        port: 5432,
+        port: '5432',
         database: '',
         username: '',
         password: '',
@@ -87,7 +87,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
     setForm((prev) => ({
       ...prev,
       type,
-      port: DEFAULT_PORTS[type] || 0,
+      port: String(DEFAULT_PORTS[type] || 0),
       host: type === DatabaseType.SQLite ? '' : prev.host || 'localhost',
     }))
     setTestResult('idle')
@@ -116,7 +116,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
       name: form.name,
       type: form.type,
       host: form.host,
-      port: form.port,
+      port: parseInt(form.port, 10) || 0,
       database: form.database,
       username: form.username,
       password: form.password,
@@ -266,9 +266,9 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   </label>
                   <input
                     value={form.port}
-                    onChange={(e) => updateField('port', parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateField('port', e.target.value)}
                     type="number"
-                    className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
+                    className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main focus:ring-2 focus:ring-primary outline-none transition-all duration-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
               </div>

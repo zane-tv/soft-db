@@ -196,8 +196,13 @@ function NumberInput({
         min={min}
         max={max}
         onChange={(e) => {
-          const n = parseInt(e.target.value, 10)
-          if (!isNaN(n)) onChange(n)
+          const raw = e.target.value
+          if (raw === '') {
+            onChange(min ?? 0)
+          } else {
+            const n = parseInt(raw, 10)
+            if (!isNaN(n)) onChange(n)
+          }
         }}
         className="w-20 bg-bg-app border border-border-subtle rounded-lg px-3 py-1.5 text-sm text-text-main text-center outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
       />

@@ -19,7 +19,7 @@ export interface UseEditableGridOptions {
 }
 
 export interface UseEditableGridReturn {
-  pendingEdits: PendingEdit[]
+  pendingEditsCount: number
   editingCell: { row: number; col: string } | null
   startEdit: (row: number, col: string) => void
   commitEdit: (value: unknown) => void
@@ -35,6 +35,13 @@ export interface UseEditableGridReturn {
   getGeneratedSQL: () => string[]
   getCellValue: (rowIndex: number, columnId: string) => unknown
   isCellDirty: (rowIndex: number, columnId: string) => boolean
+  isRowDirty: (rowIndex: number) => boolean
+  getOriginalValue: (rowIndex: number, columnId: string) => unknown | undefined
+}
+
+// ─── Dirty map key helper ───
+function dirtyKey(rowIndex: number, columnId: string): string {
+  return `${rowIndex}:${columnId}`
 }
 
 // ─── Query Editability Detection ───
@@ -74,12 +81,21 @@ export function detectEditableTable(query: string): string | null {
 
 // ─── Hook ───
 export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEditableGridOptions): UseEditableGridReturn {
-  const [pendingEdits, setPendingEdits] = useState<PendingEdit[]>([])
+  const [pendingEditsMap, setPendingEditsMap] = useState<Map<string, PendingEdit>>(new Map())
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null)
   const [isApplying, setIsApplying] = useState(false)
 
   const editableTable = useMemo(() => detectEditableTable(query), [query])
   const isEditable = editableTable !== null && pkColumns.length > 0
+
+  // Derived: Set of dirty row indices for fast row-level check
+  const dirtyRowSet = useMemo(() => {
+    const set = new Set<number>()
+    for (const edit of pendingEditsMap.values()) {
+      set.add(edit.rowIndex)
+    }
+    return set
+  }, [pendingEditsMap])
 
   // Get PK values for a row
   const getPkValues = useCallback((rowIndex: number): Record<string, unknown> => {
@@ -92,17 +108,27 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
     return pkValues
   }, [rows, pkColumns])
 
-  // Get value (pending edit or original)
+  // Get value (pending edit or original) — O(1)
   const getCellValue = useCallback((rowIndex: number, columnId: string): unknown => {
-    const edit = pendingEdits.find((e) => e.rowIndex === rowIndex && e.columnId === columnId)
+    const edit = pendingEditsMap.get(dirtyKey(rowIndex, columnId))
     if (edit) return edit.newValue
     return rows[rowIndex]?.[columnId]
-  }, [pendingEdits, rows])
+  }, [pendingEditsMap, rows])
 
-  // Check if cell has pending edit
+  // Check if cell has pending edit — O(1)
   const isCellDirty = useCallback((rowIndex: number, columnId: string): boolean => {
-    return pendingEdits.some((e) => e.rowIndex === rowIndex && e.columnId === columnId)
-  }, [pendingEdits])
+    return pendingEditsMap.has(dirtyKey(rowIndex, columnId))
+  }, [pendingEditsMap])
+
+  // Check if row has any pending edit — O(1)
+  const isRowDirty = useCallback((rowIndex: number): boolean => {
+    return dirtyRowSet.has(rowIndex)
+  }, [dirtyRowSet])
+
+  // Get original value for tooltip — O(1)
+  const getOriginalValue = useCallback((rowIndex: number, columnId: string): unknown | undefined => {
+    return pendingEditsMap.get(dirtyKey(rowIndex, columnId))?.originalValue
+  }, [pendingEditsMap])
 
   // Start editing
   const startEdit = useCallback((row: number, col: string) => {
@@ -125,22 +151,23 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
       return
     }
 
-    // Remove existing edit for this cell if any
-    setPendingEdits((prev) => {
-      const filtered = prev.filter((e) => !(e.rowIndex === row && e.columnId === col))
-      // If new value equals original, don't add edit (user reverted)
-      if (value === originalValue) return filtered
-      return [
-        ...filtered,
-        {
+    setPendingEditsMap((prev) => {
+      const next = new Map(prev)
+      const key = dirtyKey(row, col)
+      // If new value equals original, remove the edit (user reverted)
+      if (value === originalValue) {
+        next.delete(key)
+      } else {
+        next.set(key, {
           rowIndex: row,
           columnId: col,
           originalValue,
           newValue: value,
           table: editableTable,
           pkValues: getPkValues(row),
-        },
-      ]
+        })
+      }
+      return next
     })
 
     setEditingCell(null)
@@ -153,7 +180,7 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
 
   // Generate SQL for display
   const getGeneratedSQL = useCallback((): string[] => {
-    return pendingEdits.map((edit) => {
+    return Array.from(pendingEditsMap.values()).map((edit) => {
       const setPart = edit.newValue === null
         ? `"${edit.columnId}" = NULL`
         : `"${edit.columnId}" = ${formatSQLValue(edit.newValue)}`
@@ -162,15 +189,15 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
         .join(' AND ')
       return `UPDATE "${edit.table}" SET ${setPart} WHERE ${whereParts};`
     })
-  }, [pendingEdits])
+  }, [pendingEditsMap])
 
   // Apply all changes
   const applyAll = useCallback(async () => {
-    if (pendingEdits.length === 0 || !editableTable) return
+    if (pendingEditsMap.size === 0 || !editableTable) return
 
     setIsApplying(true)
     try {
-      const requests = pendingEdits.map((edit) => ({
+      const requests = Array.from(pendingEditsMap.values()).map((edit) => ({
         table: edit.table,
         pkColumns: edit.pkValues,
         column: edit.columnId,
@@ -178,15 +205,15 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
       }))
 
       await EditServiceBindings.BatchUpdateCells(connectionId, requests)
-      setPendingEdits([])
+      setPendingEditsMap(new Map())
     } finally {
       setIsApplying(false)
     }
-  }, [pendingEdits, editableTable, connectionId])
+  }, [pendingEditsMap, editableTable, connectionId])
 
   // Discard all
   const discardAll = useCallback(() => {
-    setPendingEdits([])
+    setPendingEditsMap(new Map())
     setEditingCell(null)
   }, [])
 
@@ -212,17 +239,16 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
     if (!row) return
     const pkVals = getPkValues(rowIndex)
 
-    setPendingEdits((prev) => {
-      let updated = [...prev]
+    setPendingEditsMap((prev) => {
+      const next = new Map(prev)
       for (const [col, newVal] of Object.entries(newValues)) {
         // Skip PK columns
         if (pkColumns.includes(col)) continue
         const originalValue = row[col]
-        // Remove existing edit for this cell
-        updated = updated.filter((e) => !(e.rowIndex === rowIndex && e.columnId === col))
+        const key = dirtyKey(rowIndex, col)
         // Only add if value actually changed
         if (newVal !== originalValue) {
-          updated.push({
+          next.set(key, {
             rowIndex,
             columnId: col,
             originalValue,
@@ -230,14 +256,16 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
             table: editableTable,
             pkValues: pkVals,
           })
+        } else {
+          next.delete(key)
         }
       }
-      return updated
+      return next
     })
   }, [editableTable, rows, getPkValues, pkColumns])
 
   return {
-    pendingEdits,
+    pendingEditsCount: pendingEditsMap.size,
     editingCell,
     startEdit,
     commitEdit,
@@ -253,6 +281,8 @@ export function useEditableGrid({ query, connectionId, rows, pkColumns }: UseEdi
     getGeneratedSQL,
     getCellValue,
     isCellDirty,
+    isRowDirty,
+    getOriginalValue,
   }
 }
 
@@ -263,4 +293,3 @@ function formatSQLValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
   return `'${String(value).replace(/'/g, "''")}'`
 }
-

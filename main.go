@@ -14,6 +14,9 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed build/appicon-256.png
+var appIcon []byte
+
 func main() {
 	// Initialize local store
 	appStore, err := store.New()
@@ -46,6 +49,9 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
+		Linux: application.LinuxOptions{
+			ProgramName: "softdb",
+		},
 	})
 
 	// Create main window
@@ -61,6 +67,9 @@ func main() {
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
+		},
+		Linux: application.LinuxWindow{
+			Icon: appIcon,
 		},
 	})
 

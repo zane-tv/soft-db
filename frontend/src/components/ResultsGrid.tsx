@@ -4,7 +4,6 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
-  flexRender,
   type ColumnDef,
   type SortingState,
   type ColumnFiltersState,
@@ -15,14 +14,18 @@ import type { QueryResult, ColumnMeta } from '../../bindings/soft-db/internal/dr
 import type { ColumnInfo } from '../../bindings/soft-db/internal/driver/models'
 import { useSettingsContext } from '@/hooks/useSettings'
 import { ColumnFilter, textFilterFn, numberFilterFn, booleanFilterFn, dateFilterFn } from './ColumnFilter'
-import { EditableCell } from './EditableCell'
 import { PendingChangesBar, SQLReviewModal } from './PendingChangesBar'
 import { useEditableGrid } from '@/hooks/useEditableGrid'
 import { RowContextMenu } from './RowContextMenu'
 import { AddRecordModal } from './AddRecordModal'
 import { ConfirmDialog } from './ConfirmDialog'
+import { VirtualRow } from './VirtualRow'
 
 type Row = Record<string, unknown>
+
+// ─── Default column width ───
+const DEFAULT_COL_WIDTH = 180
+const MIN_COL_WIDTH = 80
 
 interface ResultsGridProps {
   queryResult: QueryResult | null
@@ -80,7 +83,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
   // ─── Delete Confirm State ───
   const [deleteTarget, setDeleteTarget] = useState<{ rowIndex: number; row: Row } | null>(null)
 
-  // ─── Columns ───
+  // ─── Columns (no editGrid dependency — pure column definitions) ───
   const columns = useMemo<ColumnDef<Row, unknown>[]>(() => {
     if (!queryResult?.columns?.length) return []
     return queryResult.columns.map((col: ColumnMeta) => ({
@@ -88,46 +91,10 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
       header: col.name,
       meta: { type: col.type },
       filterFn: typedFilterFn,
-      cell: ({ getValue, row, column }: { getValue: () => unknown; row: { index: number }; column: { id: string } }) => {
-        const rowIndex = row.index
-        const columnId = column.id
-        const colType = col.type
-
-        // Editing mode
-        if (editGrid.editingCell?.row === rowIndex && editGrid.editingCell?.col === columnId) {
-          return (
-            <EditableCell
-              value={editGrid.getCellValue(rowIndex, columnId)}
-              columnType={colType}
-              onCommit={(val) => editGrid.commitEdit(val)}
-              onCancel={() => editGrid.cancelEdit()}
-            />
-          )
-        }
-
-        // Display mode
-        const val = editGrid.isCellDirty(rowIndex, columnId)
-          ? editGrid.getCellValue(rowIndex, columnId)
-          : getValue()
-
-        if (val === null || val === undefined) {
-          return (
-            settings.nullDisplay === 'badge' ? (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-bg-hover/50 text-text-muted border border-border-subtle italic">
-                NULL
-              </span>
-            ) : settings.nullDisplay === 'dash' ? (
-              <span className="text-text-muted/50">—</span>
-            ) : (
-              <span className="text-text-muted/50 italic">null</span>
-            )
-          )
-        }
-        if (typeof val === 'object') return JSON.stringify(val)
-        return String(val)
-      },
+      size: DEFAULT_COL_WIDTH,
+      minSize: MIN_COL_WIDTH,
     }))
-  }, [queryResult?.columns, settings.nullDisplay, editGrid.editingCell, editGrid])
+  }, [queryResult?.columns])
 
   // ─── Table ───
   const table = useReactTable({
@@ -144,12 +111,39 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
 
   const { rows: tableRows } = table.getRowModel()
 
+  // ─── Visible columns metadata (for VirtualRow) ───
+  const visibleColumns = useMemo(() =>
+    table.getVisibleLeafColumns().map((col) => ({
+      id: col.id,
+      type: (col.columnDef.meta as Record<string, string>)?.type || '',
+      width: col.getSize(),
+    })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [table.getVisibleLeafColumns().length, queryResult?.columns]
+  )
+
+  // ─── Row Virtualizer ───
   const rowVirtualizer = useVirtualizer({
     count: tableRows.length,
     getScrollElement: () => resultContainerRef.current,
     estimateSize: () => settings.rowDensity === 'compact' ? 28 : settings.rowDensity === 'comfortable' ? 44 : 36,
     overscan: 20,
   })
+
+  // ─── Column Virtualizer ───
+  const columnVirtualizer = useVirtualizer({
+    horizontal: true,
+    count: visibleColumns.length,
+    getScrollElement: () => resultContainerRef.current,
+    estimateSize: (index) => visibleColumns[index]?.width || DEFAULT_COL_WIDTH,
+    overscan: 3,
+  })
+
+  const virtualColumns = columnVirtualizer.getVirtualItems()
+  const virtualPaddingLeft = virtualColumns[0]?.start ?? 0
+  const virtualPaddingRight =
+    columnVirtualizer.getTotalSize() -
+    (virtualColumns[virtualColumns.length - 1]?.end ?? 0)
 
   // ─── Handlers ───
   const handleApply = useCallback(async () => {
@@ -297,14 +291,21 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
         </div>
       ) : queryResult?.columns?.length ? (
         <div ref={resultContainerRef} className="flex-1 overflow-auto">
-          <table className="w-full border-collapse text-left whitespace-nowrap">
-            <thead className="sticky top-0 z-10 bg-bg-card">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <th
+          {/* ─── HEADER (sticky, outside virtual scroll) ─── */}
+          <div className="sticky top-0 z-10 bg-bg-card" style={{ width: columnVirtualizer.getTotalSize() }}>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <div key={headerGroup.id} className="flex">
+                {/* Left column padding */}
+                {virtualPaddingLeft > 0 && <div style={{ width: virtualPaddingLeft, flexShrink: 0 }} />}
+
+                {virtualColumns.map((vc) => {
+                  const header = headerGroup.headers[vc.index]
+                  if (!header) return null
+                  return (
+                    <div
                       key={header.id}
-                      className="px-4 py-2.5 text-xs font-bold text-text-muted uppercase tracking-wider border-b border-border-subtle/50"
+                      className="px-4 py-2.5 text-xs font-bold text-text-muted uppercase tracking-wider border-b border-border-subtle/50 shrink-0"
+                      style={{ width: vc.size }}
                     >
                       <div
                         className={`flex items-center gap-1.5 ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-text-main' : ''}`}
@@ -313,7 +314,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
                         <span className="material-symbols-outlined text-[14px] text-text-muted/40">
                           {getColumnIcon((header.column.columnDef.meta as Record<string, string>)?.type)}
                         </span>
-                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.columnDef.header as string}
                         {{
                           asc: <span className="material-symbols-outlined text-[14px] text-primary">arrow_upward</span>,
                           desc: <span className="material-symbols-outlined text-[14px] text-primary">arrow_downward</span>,
@@ -328,50 +329,51 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
                           <ColumnFilter column={header.column} />
                         </div>
                       )}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody className="font-mono text-text-muted" style={{ fontSize: `${settings.fontSize}px` }}>
-              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                const row = tableRows[virtualRow.index]
-                const isEven = virtualRow.index % 2 === 0
-                const isRowDirty = editGrid.pendingEdits.some((e) => e.rowIndex === row.index)
-                return (
-                  <tr
-                    key={row.id}
-                    className={`border-b border-border-subtle/10 hover:bg-bg-hover/30 transition-colors group
-                      ${isRowDirty
-                        ? 'bg-amber-500/8 border-l-2 border-l-amber-400'
-                        : isEven ? 'bg-bg-app' : 'bg-bg-card'
-                      }`}
-                    style={{ height: `${virtualRow.size}px` }}
-                    onContextMenu={(e) => handleContextMenu(e, row.original, row.index)}
-                  >
-                    {row.getVisibleCells().map((cell) => {
-                      const isDirty = editGrid.isCellDirty(row.index, cell.column.id)
-                      const isPk = pkColumns.includes(cell.column.id)
-                      return (
-                        <td
-                          key={cell.id}
-                          className={`px-4 py-2 group-hover:text-text-main transition-colors max-w-[300px] truncate relative
-                            ${isDirty ? 'border-l-2 border-l-amber-400 bg-amber-500/5' : ''}
-                            ${editGrid.isEditable && !isPk ? 'cursor-text' : ''}
-                            ${isPk ? 'text-text-muted/60' : ''}`}
-                          onDoubleClick={() => editGrid.startEdit(row.index, cell.column.id)}
-                          onContextMenu={(e) => { e.stopPropagation(); handleContextMenu(e, row.original, row.index, cell.column.id) }}
-                          title={isDirty ? `Original: ${String(editGrid.pendingEdits.find(e => e.rowIndex === row.index && e.columnId === cell.column.id)?.originalValue)}` : undefined}
-                        >
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  )
+                })}
+
+                {/* Right column padding */}
+                {virtualPaddingRight > 0 && <div style={{ width: virtualPaddingRight, flexShrink: 0 }} />}
+              </div>
+            ))}
+          </div>
+
+          {/* ─── BODY (virtualized rows with absolute positioning) ─── */}
+          <div
+            className="font-mono text-text-muted relative"
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: `${columnVirtualizer.getTotalSize()}px`,
+              fontSize: `${settings.fontSize}px`,
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const row = tableRows[virtualRow.index]
+              return (
+                <VirtualRow
+                  key={row.id}
+                  row={row}
+                  virtualRow={virtualRow}
+                  virtualColumns={virtualColumns}
+                  visibleColumns={visibleColumns}
+                  virtualPaddingLeft={virtualPaddingLeft}
+                  virtualPaddingRight={virtualPaddingRight}
+                  pkColumns={pkColumns}
+                  isEditable={editGrid.isEditable}
+                  editingCell={editGrid.editingCell}
+                  isCellDirty={editGrid.isCellDirty}
+                  getCellValue={editGrid.getCellValue}
+                  isRowDirty={editGrid.isRowDirty(row.index)}
+                  getOriginalValue={editGrid.getOriginalValue}
+                  onStartEdit={editGrid.startEdit}
+                  onCommitEdit={editGrid.commitEdit}
+                  onCancelEdit={editGrid.cancelEdit}
+                  onContextMenu={handleContextMenu}
+                />
+              )
+            })}
+          </div>
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
@@ -384,7 +386,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
 
       {/* Pending Changes Bar */}
       <PendingChangesBar
-        count={editGrid.pendingEdits.length}
+        count={editGrid.pendingEditsCount}
         onReviewSQL={() => setShowSQLReview(true)}
         onDiscard={() => editGrid.discardAll()}
         onApply={handleApply}
@@ -392,7 +394,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
       />
 
       {/* Pagination Footer */}
-      {queryResult && !queryResult.error && queryResult.rowCount > 0 && editGrid.pendingEdits.length === 0 && (
+      {queryResult && !queryResult.error && queryResult.rowCount > 0 && editGrid.pendingEditsCount === 0 && (
         <div className="h-10 flex items-center justify-between px-4 border-t border-border-subtle/30 bg-bg-app text-xs text-text-muted shrink-0">
           <span>Showing {tableRows.length} rows ({queryResult.executionTime}ms)</span>
           <span className="text-text-muted/40 font-mono">
