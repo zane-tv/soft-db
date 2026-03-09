@@ -11,15 +11,17 @@ import (
 
 // QueryService handles query execution (bound to Wails frontend)
 type QueryService struct {
-	connService *ConnectionService
-	store       *store.Store
+	connService     *ConnectionService
+	settingsService *SettingsService
+	store           *store.Store
 }
 
 // NewQueryService creates the service
-func NewQueryService(cs *ConnectionService, s *store.Store) *QueryService {
+func NewQueryService(cs *ConnectionService, ss *SettingsService, s *store.Store) *QueryService {
 	return &QueryService{
-		connService: cs,
-		store:       s,
+		connService:     cs,
+		settingsService: ss,
+		store:           s,
 	}
 }
 
@@ -30,7 +32,8 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string) (*driver.
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	result, err := drv.Execute(ctx, query)

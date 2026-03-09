@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "golang": {
+      "source": "saisudhir14/golang-agent-skill",
+      "sourceType": "github",
+      "computedHash": "9b51b75f48443bd04c8a34774aa0ba600eb78f2b6653f3673f38105a41e0e417"
+    },
     "golang-pro": {
       "source": "jeffallan/claude-skills",
       "sourceType": "github",
@@ -11,15 +16,20 @@
       "sourceType": "github",
       "computedHash": "0fc7b79d08ee5168d46c6887014cbe5bd02f2c5e458858470e20fc8ecedefb46"
     },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "e688fcd4c5693e14ebd00d48e982dbd2be060fbea89f5f60531e79c704a1bc28"
+    },
     "vercel-react-best-practices": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",
-      "computedHash": "3ff06f0712886f7c2660d6746856c22d3127bd6568ddde29ddad8b72dbaaa226"
+      "computedHash": "3462ec83f862abb2d532953df33a4dbf87f4616849da5d4b5cc7c13601aaf997"
     },
     "wails": {
       "source": "codegirl-007/aiplatform",
       "sourceType": "github",
-      "computedHash": "fc40f71249b178ff92a75c9a51ba994b32c167d8db883580609b91ed8ebd13cf"
+      "computedHash": "bf6f69682da4c8c7ac3a30da2efcf7ce4438bf9d5d312dfbb80855c0ce51b98a"
     }
   }
 }

@@ -112,6 +112,11 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+html[data-theme="light"] .glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
 /* ─── Connection Card Hover ─── */
 @utility connection-card {
   transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
@@ -126,4 +131,105 @@ input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* ─── Theme Variants ─── */
+
+/* Light Theme */
+html[data-theme="light"] {
+  --color-bg-app: #F1F5F9;
+  --color-bg-card: #FFFFFF;
+  --color-bg-hover: #E2E8F0;
+  --color-bg-editor: #F8FAFC;
+  --color-primary: #3c83f6;
+  --color-primary-hover: #2563eb;
+  --color-primary-muted: #60a5fa;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-text-main: #1E293B;
+  --color-text-muted: #64748B;
+  --color-border-subtle: #E2E8F0;
+  --color-syntax-keyword: #7C3AED;
+  --color-syntax-string: #059669;
+  --color-syntax-number: #DB2777;
+  --color-syntax-comment: #94A3B8;
+  --shadow-soft: 0px 4px 24px -1px rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0px 0px 40px -10px rgba(60, 131, 246, 0.15);
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Nord Theme */
+html[data-theme="nord"] {
+  --color-bg-app: #2E3440;
+  --color-bg-card: #3B4252;
+  --color-bg-hover: #434C5E;
+  --color-bg-editor: #272C36;
+  --color-primary: #88C0D0;
+  --color-primary-hover: #81A1C1;
+  --color-primary-muted: #8FBCBB;
+  --color-success: #A3BE8C;
+  --color-warning: #EBCB8B;
+  --color-error: #BF616A;
+  --color-text-main: #ECEFF4;
+  --color-text-muted: #D8DEE9;
+  --color-border-subtle: #4C566A;
+  --color-syntax-keyword: #B48EAD;
+  --color-syntax-string: #A3BE8C;
+  --color-syntax-number: #D08770;
+  --color-syntax-comment: #616E88;
+  --shadow-soft: 0px 4px 24px -1px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0px 0px 40px -10px rgba(136, 192, 208, 0.25);
+}
+
+html[data-theme="nord"] ::-webkit-scrollbar-track {
+  background: #2E3440;
+}
+html[data-theme="nord"] ::-webkit-scrollbar-thumb {
+  background: #4C566A;
+}
+html[data-theme="nord"] ::-webkit-scrollbar-thumb:hover {
+  background: #616E88;
+}
+
+/* Dracula Theme */
+html[data-theme="dracula"] {
+  --color-bg-app: #282A36;
+  --color-bg-card: #44475A;
+  --color-bg-hover: #6272A4;
+  --color-bg-editor: #21222C;
+  --color-primary: #BD93F9;
+  --color-primary-hover: #A77BF3;
+  --color-primary-muted: #CAA9FA;
+  --color-success: #50FA7B;
+  --color-warning: #F1FA8C;
+  --color-error: #FF5555;
+  --color-text-main: #F8F8F2;
+  --color-text-muted: #BFBFBF;
+  --color-border-subtle: #6272A4;
+  --color-syntax-keyword: #FF79C6;
+  --color-syntax-string: #50FA7B;
+  --color-syntax-number: #BD93F9;
+  --color-syntax-comment: #6272A4;
+  --shadow-soft: 0px 4px 24px -1px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0px 0px 40px -10px rgba(189, 147, 249, 0.3);
+}
+
+html[data-theme="dracula"] ::-webkit-scrollbar-track {
+  background: #282A36;
+}
+html[data-theme="dracula"] ::-webkit-scrollbar-thumb {
+  background: #6272A4;
+}
+html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
+  background: #7283B5;
 }

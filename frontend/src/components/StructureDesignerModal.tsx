@@ -58,11 +58,15 @@ interface StructureDesignerModalProps {
 }
 
 export function StructureDesignerModal({ open, onClose, connectionId, tableName, dbType }: StructureDesignerModalProps) {
-  const { data: serverColumns = [] } = useColumns(connectionId, tableName)
+  const isNewTable = tableName === '__new__'
+  const { data: serverColumns = [] } = useColumns(connectionId, isNewTable ? '' : tableName)
+
+  // Editable table name for new tables
+  const [editableName, setEditableName] = useState(isNewTable ? 'new_table' : tableName)
 
   // ─── Local editable column state ───
   const [columns, setColumns] = useState<ColumnDef[]>(() => {
-    if (serverColumns.length) {
+    if (!isNewTable && serverColumns.length) {
       return serverColumns.map((c) => ({
         id: newColId(),
         name: c.name,
@@ -76,10 +80,8 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
       }))
     }
     return [
-      { id: newColId(), name: 'id', type: 'uuid', primaryKey: true, notNull: true, unique: false, defaultValue: 'gen_random_uuid()', status: 'existing' as const },
-      { id: newColId(), name: 'email', type: 'varchar(255)', primaryKey: false, notNull: true, unique: true, defaultValue: '', status: 'existing' as const },
-      { id: newColId(), name: 'full_name', type: 'varchar(100)', primaryKey: false, notNull: false, unique: false, defaultValue: '', status: 'existing' as const },
-      { id: newColId(), name: 'settings', type: 'jsonb', primaryKey: false, notNull: false, unique: false, defaultValue: '', status: 'existing' as const },
+      { id: newColId(), name: 'id', type: 'uuid', primaryKey: true, notNull: true, unique: false, defaultValue: 'gen_random_uuid()', status: 'new' as const },
+      { id: newColId(), name: 'created_at', type: 'timestamptz', primaryKey: false, notNull: true, unique: false, defaultValue: 'now()', status: 'new' as const },
     ]
   })
 
@@ -154,7 +156,7 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
     const delCols = columns.filter((c) => c.status === 'deleted')
 
     for (const col of newCols) {
-      let line = `ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`
+      let line = `ALTER TABLE ${isNewTable ? editableName : tableName} ADD COLUMN ${col.name} ${col.type}`
       if (col.notNull) line += ' NOT NULL'
       if (col.unique) line += ' UNIQUE'
       if (col.defaultValue) line += ` DEFAULT ${col.defaultValue}`
@@ -162,12 +164,12 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
     }
     for (const col of modCols) {
       if (col.originalName && col.originalName !== col.name) {
-        lines.push(`ALTER TABLE ${tableName} RENAME COLUMN ${col.originalName} TO ${col.name};`)
+        lines.push(`ALTER TABLE ${isNewTable ? editableName : tableName} RENAME COLUMN ${col.originalName} TO ${col.name};`)
       }
-      lines.push(`ALTER TABLE ${tableName} ALTER COLUMN ${col.name} TYPE ${col.type};`)
+      lines.push(`ALTER TABLE ${isNewTable ? editableName : tableName} ALTER COLUMN ${col.name} TYPE ${col.type};`)
     }
     for (const col of delCols) {
-      lines.push(`ALTER TABLE ${tableName} DROP COLUMN ${col.name};`)
+      lines.push(`ALTER TABLE ${isNewTable ? editableName : tableName} DROP COLUMN ${col.name};`)
     }
     return lines.join('\n') || '-- No pending changes'
   }, [columns, tableName])
@@ -190,13 +192,23 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal Card */}
-      <div className="relative w-full max-w-[1000px] max-h-[85vh] bg-bg-card rounded-xl shadow-soft border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up mx-4">
+      <div className="relative w-full max-w-[1000px] max-h-[85vh] bg-bg-card rounded-xl border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up mx-4">
         {/* ─── Header ─── */}
         <div className="px-6 py-5 border-b border-border-subtle flex items-center justify-between bg-bg-card z-10 shrink-0">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-text-muted">table_chart</span>
-              <h1 className="text-xl font-bold text-text-main font-display tracking-tight">{tableName}</h1>
+              {isNewTable ? (
+                <input
+                  className="text-xl font-bold text-text-main font-display tracking-tight bg-transparent border-b-2 border-primary/50 focus:border-primary outline-none px-1 py-0.5 w-64"
+                  value={editableName}
+                  onChange={(e) => setEditableName(e.target.value)}
+                  placeholder="table_name"
+                  autoFocus
+                />
+              ) : (
+                <h1 className="text-xl font-bold text-text-main font-display tracking-tight">{tableName}</h1>
+              )}
               {dbType && (
                 <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-bg-hover text-text-muted">
                   {dbType}
@@ -204,7 +216,9 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
               )}
             </div>
             <p className="text-sm text-text-muted pl-9">
-              Modify columns and constraints visually. Changes are staged until applied.
+              {isNewTable
+                ? 'Design your new table. Add columns and set constraints.'
+                : 'Modify columns and constraints visually. Changes are staged until applied.'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -217,7 +231,7 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
             </button>
             <button
               onClick={addColumn}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-bold shadow-lg transition-all shadow-blue-500/20"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-bold transition-all"
             >
               <span className="material-symbols-outlined text-[18px]">add_column_right</span>
               Add Column
@@ -235,7 +249,7 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
         <div className="flex-1 overflow-y-auto bg-bg-card/50">
           {/* DDL Preview Panel */}
           {showDDL && (
-            <div className="mx-6 mt-4 bg-[#121215] rounded-lg border border-border-subtle overflow-hidden">
+            <div className="mx-6 mt-4 bg-bg-editor rounded-lg border border-border-subtle overflow-hidden">
               <div className="px-4 py-2.5 border-b border-border-subtle/50 flex items-center justify-between">
                 <span className="text-xs font-semibold text-text-main">Generated DDL</span>
                 <button onClick={() => setShowDDL(false)} className="text-text-muted hover:text-text-main">
@@ -286,7 +300,7 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
 
         {/* ─── Pending Changes Footer ─── */}
         {pendingChanges.length > 0 && (
-          <div className="px-6 py-4 bg-bg-card border-t border-border-subtle z-20 flex items-center justify-between shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.3)] shrink-0">
+          <div className="px-6 py-4 bg-bg-card border-t border-border-subtle z-20 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center size-8 rounded-full text-primary">
                 <span className="material-symbols-outlined text-[18px]">history_edu</span>
@@ -307,7 +321,7 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
               </button>
               <button
                 onClick={() => setShowDDL(true)}
-                className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-bold shadow-lg transition-all active:scale-95 shadow-blue-500/20"
+                className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-bold transition-all active:scale-95"
               >
                 <span className="material-symbols-outlined text-[18px]">check</span>
                 Apply Changes
@@ -392,7 +406,7 @@ function SortableColumnRow({ column, onUpdate, onRemove }: {
         {typeOpen && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setTypeOpen(false)} />
-            <div className="absolute top-0 left-0 w-full z-40 bg-bg-hover border border-primary rounded-lg shadow-xl overflow-hidden animate-fade-in">
+            <div className="absolute top-0 left-0 w-full z-40 bg-bg-hover border border-primary rounded-lg overflow-hidden animate-fade-in">
               <div className="p-2 border-b border-border-subtle/50">
                 <div className="flex items-center gap-2 bg-bg-card px-2 py-1.5 rounded border border-border-subtle/50">
                   <span className="material-symbols-outlined text-[14px] text-text-muted">search</span>
@@ -415,7 +429,7 @@ function SortableColumnRow({ column, onUpdate, onRemove }: {
                       setTypeSearch('')
                     }}
                     className={`w-full px-3 py-2 text-xs font-mono text-left flex justify-between items-center transition-colors ${
-                      t === column.type ? 'text-white bg-primary/20' : 'text-text-muted hover:text-white hover:bg-bg-card/50'
+                      t === column.type ? 'text-text-main bg-primary/20' : 'text-text-muted hover:text-text-main hover:bg-bg-card/50'
                     }`}
                   >
                     <span>{t}</span>
@@ -468,7 +482,7 @@ function ConstraintPill({ label, active, onClick, title }: { label: string; acti
       title={title}
       className={`h-6 px-2 rounded-full text-[10px] font-bold tracking-wide transition-all ${
         active
-          ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
+          ? 'bg-primary text-text-main'
           : 'border border-border-subtle text-text-muted hover:border-text-muted/50 hover:text-text-main'
       }`}
     >

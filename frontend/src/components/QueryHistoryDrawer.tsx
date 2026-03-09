@@ -117,7 +117,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
       <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 w-[400px] bg-bg-card border-l border-border-subtle shadow-soft flex flex-col z-50 animate-slide-in-right">
+      <div className="fixed right-0 top-0 bottom-0 w-[400px] bg-bg-card border-l border-border-subtle flex flex-col z-50 animate-slide-in-right">
         {/* ─── Header ─── */}
         <div className="flex flex-col border-b border-border-subtle bg-bg-card sticky top-0 z-30 shrink-0">
           {/* Title & Close */}
@@ -143,7 +143,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                 onClick={() => setTab('history')}
                 className={`flex-1 py-1.5 px-3 rounded text-sm font-medium transition-all text-center ${
                   tab === 'history'
-                    ? 'text-text-main bg-primary shadow-sm'
+                    ? 'text-text-main bg-primary'
                     : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
                 }`}
               >
@@ -153,7 +153,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                 onClick={() => setTab('saved')}
                 className={`flex-1 py-1.5 px-3 rounded text-sm font-medium transition-all text-center ${
                   tab === 'saved'
-                    ? 'text-text-main bg-primary shadow-sm'
+                    ? 'text-text-main bg-primary'
                     : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
                 }`}
               >
@@ -265,7 +265,7 @@ function HistoryItem({ entry, onUse, onCopy, onSave }: {
   return (
     <div
       onClick={onUse}
-      className="group relative bg-bg-app hover:bg-bg-hover border border-border-subtle hover:border-bg-hover rounded-lg p-3 transition-all cursor-pointer shadow-sm mb-2"
+      className="group relative bg-bg-app hover:bg-bg-hover border border-border-subtle hover:border-bg-hover rounded-lg p-3 transition-all cursor-pointer mb-2"
     >
       {/* Header: Time & Status */}
       <div className="flex items-center justify-between mb-2">
@@ -280,14 +280,14 @@ function HistoryItem({ entry, onUse, onCopy, onSave }: {
       <div className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
         <button
           onClick={(e) => { e.stopPropagation(); onSave() }}
-          className="bg-bg-card hover:bg-primary text-text-muted hover:text-white p-1.5 rounded-md shadow-lg border border-border-subtle transition-colors"
+          className="bg-bg-card hover:bg-primary text-text-muted hover:text-text-main p-1.5 rounded-md border border-border-subtle transition-colors"
           title="Save as Snippet"
         >
           <span className="material-symbols-outlined text-[16px]">bookmark</span>
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onCopy() }}
-          className="bg-bg-card hover:bg-primary text-text-muted hover:text-white p-1.5 rounded-md shadow-lg border border-border-subtle transition-colors"
+          className="bg-bg-card hover:bg-primary text-text-muted hover:text-text-main p-1.5 rounded-md border border-border-subtle transition-colors"
           title="Copy to Clipboard"
         >
           <span className="material-symbols-outlined text-[16px]">content_copy</span>
@@ -306,7 +306,7 @@ function SnippetCard({ snippet, onUse, onCopy }: {
   return (
     <div
       onClick={onUse}
-      className="group bg-bg-hover/20 hover:bg-bg-hover border border-primary/20 hover:border-primary/50 rounded-lg p-4 transition-all cursor-pointer shadow-sm relative overflow-hidden mb-2"
+      className="group bg-bg-hover/20 hover:bg-bg-hover border border-primary/20 hover:border-primary/50 rounded-lg p-4 transition-all cursor-pointer relative overflow-hidden mb-2"
     >
       {/* Bookmark Icon */}
       <div className="absolute top-0 right-0 p-2">
@@ -332,7 +332,7 @@ function SnippetCard({ snippet, onUse, onCopy }: {
       <div className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); onCopy() }}
-          className="bg-bg-card hover:bg-primary text-text-muted hover:text-white p-1.5 rounded-md shadow-lg border border-border-subtle transition-colors"
+          className="bg-bg-card hover:bg-primary text-text-muted hover:text-text-main p-1.5 rounded-md border border-border-subtle transition-colors"
           title="Copy"
         >
           <span className="material-symbols-outlined text-[16px]">content_copy</span>

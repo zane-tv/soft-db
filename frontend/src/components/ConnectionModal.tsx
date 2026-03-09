@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 import { useSaveConnection, useTestConnection } from '@/hooks/useConnections'
+import { Dialogs } from '@wailsio/runtime'
 
 interface ConnectionModalProps {
   open: boolean
@@ -92,6 +93,23 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
     setTestResult('idle')
   }, [])
 
+  const handleBrowseFile = useCallback(async () => {
+    try {
+      const path = await Dialogs.OpenFile({
+        Title: 'Select SQLite Database',
+        Filters: [
+          { DisplayName: 'SQLite Files', Pattern: '*.db;*.sqlite;*.sqlite3;*.db3' },
+          { DisplayName: 'All Files', Pattern: '*.*' },
+        ],
+      })
+      if (path) {
+        updateField('filePath', path as string)
+      }
+    } catch {
+      // user cancelled
+    }
+  }, [updateField])
+
   const buildConfig = useCallback((): ConnectionConfig => {
     return new ConnectionConfig({
       id: editConnection?.id || '',
@@ -145,7 +163,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-[560px] max-h-[90vh] bg-bg-card rounded-2xl border border-border-subtle shadow-2xl flex flex-col overflow-hidden animate-fade-in-up"
+      <div className="relative w-full max-w-[560px] max-h-[90vh] bg-bg-card rounded-2xl border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up"
         style={{ animationDuration: '0.3s' }}
       >
         {/* Header */}
@@ -158,7 +176,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
           </div>
           <button
             onClick={onClose}
-            className="text-text-muted hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors duration-200"
+            className="text-text-muted hover:text-text-main p-1.5 rounded-lg hover:bg-white/5 transition-colors duration-200"
           >
             <span className="material-symbols-outlined text-[22px]">close</span>
           </button>
@@ -191,7 +209,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   onClick={() => handleTypeChange(db.value)}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 ${
                     form.type === db.value
-                      ? 'border-primary/50 bg-primary/10 text-white'
+                      ? 'border-primary/50 bg-primary/10 text-text-main'
                       : 'border-border-subtle bg-bg-app text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
                   }`}
                 >
@@ -210,12 +228,22 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
               <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
                 Database File Path
               </label>
-              <input
-                value={form.filePath}
-                onChange={(e) => updateField('filePath', e.target.value)}
-                className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
-                placeholder="/path/to/database.db"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={form.filePath}
+                  onChange={(e) => updateField('filePath', e.target.value)}
+                  className="flex-1 bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
+                  placeholder="/path/to/database.db"
+                />
+                <button
+                  type="button"
+                  onClick={handleBrowseFile}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-border-subtle bg-bg-app text-sm font-medium text-text-muted hover:text-text-main hover:bg-bg-hover/50 transition-all duration-200 shrink-0"
+                >
+                  <span className="material-symbols-outlined text-[18px]">folder_open</span>
+                  Browse
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -334,7 +362,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
             <button
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-semibold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
+              className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
             >
               <span className="material-symbols-outlined text-[18px]">save</span>
               {editConnection ? 'Update' : 'Save'}

@@ -14,18 +14,20 @@ import (
 
 // ConnectionService manages database connections (bound to Wails frontend)
 type ConnectionService struct {
-	store   *store.Store
-	drivers map[string]driver.Driver
-	configs map[string]driver.ConnectionConfig
-	mu      sync.RWMutex
+	store           *store.Store
+	settingsService *SettingsService
+	drivers         map[string]driver.Driver
+	configs         map[string]driver.ConnectionConfig
+	mu              sync.RWMutex
 }
 
 // NewConnectionService creates the service with a store reference
-func NewConnectionService(s *store.Store) *ConnectionService {
+func NewConnectionService(s *store.Store, ss *SettingsService) *ConnectionService {
 	return &ConnectionService{
-		store:   s,
-		drivers: make(map[string]driver.Driver),
-		configs: make(map[string]driver.ConnectionConfig),
+		store:           s,
+		settingsService: ss,
+		drivers:         make(map[string]driver.Driver),
+		configs:         make(map[string]driver.ConnectionConfig),
 	}
 }
 
@@ -80,7 +82,7 @@ func (s *ConnectionService) TestConnection(cfg driver.ConnectionConfig) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.settingsService.GetConnectionTimeout())*time.Second)
 	defer cancel()
 
 	if err := drv.Connect(ctx, cfg); err != nil {
@@ -116,7 +118,7 @@ func (s *ConnectionService) Connect(id string) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.settingsService.GetConnectionTimeout())*time.Second)
 	defer cancel()
 
 	if err := drv.Connect(ctx, cfg); err != nil {

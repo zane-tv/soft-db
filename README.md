@@ -1,59 +1,97 @@
-# Welcome to Your New Wails3 Project!
+<p align="center">
+  <img src="build/appicon.png" width="128" height="128" alt="SoftDB Logo" />
+</p>
 
-Congratulations on generating your Wails3 application! This README will guide you through the next steps to get your project up and running.
+<h1 align="center">SoftDB</h1>
 
-## Getting Started
+<p align="center">
+  <strong>Modern Database Management Tool</strong><br/>
+  Connect, explore, and manage your databases with a beautiful cross-platform desktop app.
+</p>
 
-1. Navigate to your project directory in the terminal.
+<p align="center">
+  <a href="https://github.com/zane-tv/soft-db/releases"><img src="https://img.shields.io/github/v/release/zane-tv/soft-db?style=flat-square&color=blue" alt="Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/zane-tv/soft-db?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/zane-tv/soft-db/releases"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform" /></a>
+</p>
 
-2. To run your application in development mode, use the following command:
+---
 
-   ```
-   wails3 dev
-   ```
+## ✨ Features
 
-   This will start your application and enable hot-reloading for both frontend and backend changes.
+- 🗄️ **Multi-Database Support** — PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift
+- 📝 **Monaco SQL Editor** — Syntax highlighting, autocomplete, multi-tab queries
+- 🔍 **Visual Table Explorer** — Browse schemas, tables, and columns with inline data preview
+- 🏗️ **Structure Designer** — Create and modify tables visually with a drag-and-drop column editor
+- 🔗 **Multi-Connection Tabs** — Work with multiple databases side-by-side
+- ⚙️ **Connection Manager** — Save, organize, and quick-connect to your databases
+- 🌙 **Dark Mode** — Beautiful dark UI designed for long coding sessions
 
-3. To build your application for production, use:
+## 🗃️ Supported Databases
 
-   ```
-   wails3 build
-   ```
+| Database | Status |
+|----------|--------|
+| PostgreSQL | ✅ Full support |
+| MySQL | ✅ Full support |
+| MariaDB | ✅ Full support |
+| SQLite | ✅ Full support |
+| MongoDB | 🟡 Basic support |
+| Redshift | 🟡 Basic support |
 
-   This will create a production-ready executable in the `build` directory.
+## 🚀 Quick Start
 
-## Exploring Wails3 Features
+### Download
 
-Now that you have your project set up, it's time to explore the features that Wails3 offers:
+Download the latest release for your platform from the [Releases page](https://github.com/zane-tv/soft-db/releases).
 
-1. **Check out the examples**: The best way to learn is by example. Visit the `examples` directory in the `v3/examples` directory to see various sample applications.
+### Build from Source
 
-2. **Run an example**: To run any of the examples, navigate to the example's directory and use:
+**Prerequisites:**
+- [Go](https://golang.org/dl/) 1.22+
+- [Bun](https://bun.sh/) (or Node.js 18+)
+- [Wails CLI v3](https://v3.wails.io/getting-started/installation/)
 
-   ```
-   go run .
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/zane-tv/soft-db.git
+cd soft-db
 
-   Note: Some examples may be under development during the alpha phase.
+# Development mode (hot-reload)
+wails3 dev
 
-3. **Explore the documentation**: Visit the [Wails3 documentation](https://v3.wails.io/) for in-depth guides and API references.
+# Production build
+wails3 build
+```
 
-4. **Join the community**: Have questions or want to share your progress? Join the [Wails Discord](https://discord.gg/JDdSxwjhGf) or visit the [Wails discussions on GitHub](https://github.com/wailsapp/wails/discussions).
+## 🛠️ Tech Stack
 
-## Project Structure
+| Layer | Technology |
+|-------|-----------|
+| **Desktop Runtime** | [Wails v3](https://v3.wails.io/) (Go + WebView) |
+| **Backend** | Go 1.22+ |
+| **Frontend** | React + TypeScript + Vite |
+| **SQL Editor** | Monaco Editor |
+| **Routing** | TanStack Router |
+| **State** | TanStack Query |
+| **Styling** | Tailwind CSS |
 
-Take a moment to familiarize yourself with your project structure:
+## 📁 Project Structure
 
-- `frontend/`: Contains your frontend code (HTML, CSS, JavaScript/TypeScript)
-- `main.go`: The entry point of your Go backend
-- `app.go`: Define your application structure and methods here
-- `wails.json`: Configuration file for your Wails project
+```
+soft-db/
+├── main.go              # App entry point
+├── services/            # Go backend services (connection, query, schema)
+├── internal/            # Database drivers & local store
+├── frontend/
+│   ├── src/
+│   │   ├── pages/       # Main views (ConnectionHub, TableExplorer)
+│   │   ├── components/  # Reusable UI components
+│   │   ├── hooks/       # React hooks for API calls
+│   │   └── routes/      # TanStack Router config
+│   └── ...
+└── build/               # Build config, icons, platform assets
+```
 
-## Next Steps
+## 📄 License
 
-1. Modify the frontend in the `frontend/` directory to create your desired UI.
-2. Add backend functionality in `main.go`.
-3. Use `wails3 dev` to see your changes in real-time.
-4. When ready, build your application with `wails3 build`.
-
-Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+[MIT](LICENSE) — Made with ❤️ by [Zane](https://github.com/zane-tv)

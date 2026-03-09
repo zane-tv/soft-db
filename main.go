@@ -23,9 +23,11 @@ func main() {
 	defer appStore.Close()
 
 	// Create services
-	connService := services.NewConnectionService(appStore)
-	queryService := services.NewQueryService(connService, appStore)
+	settingsService := services.NewSettingsService(appStore)
+	connService := services.NewConnectionService(appStore, settingsService)
+	queryService := services.NewQueryService(connService, settingsService, appStore)
 	schemaService := services.NewSchemaService(connService)
+	editService := services.NewEditService(connService, queryService, settingsService, appStore)
 
 	// Create Wails app
 	app := application.New(application.Options{
@@ -35,6 +37,8 @@ func main() {
 			application.NewService(connService),
 			application.NewService(queryService),
 			application.NewService(schemaService),
+			application.NewService(settingsService),
+			application.NewService(editService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

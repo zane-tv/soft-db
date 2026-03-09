@@ -85,6 +85,11 @@ func (s *Store) migrate() error {
 			created_at TEXT DEFAULT (datetime('now')),
 			updated_at TEXT DEFAULT (datetime('now'))
 		);
+		CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TEXT DEFAULT (datetime('now'))
+		);
 		CREATE INDEX IF NOT EXISTS idx_history_conn ON query_history(connection_id);
 		CREATE INDEX IF NOT EXISTS idx_history_created ON query_history(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_snippets_conn ON snippets(connection_id);
@@ -235,6 +240,25 @@ func (s *Store) ListSnippets(connectionID string) ([]Snippet, error) {
 
 func (s *Store) DeleteSnippet(id int) error {
 	_, err := s.db.Exec(`DELETE FROM snippets WHERE id = ?`, id)
+	return err
+}
+
+// ─── Settings ───
+
+func (s *Store) LoadSettings() (string, error) {
+	var value string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key = 'app_settings'`).Scan(&value)
+	if err != nil {
+		return "{}", nil // return empty JSON if no settings saved yet
+	}
+	return value, nil
+}
+
+func (s *Store) SaveSettings(jsonValue string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO settings (key, value, updated_at) VALUES ('app_settings', ?, datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+		jsonValue)
 	return err
 }
 

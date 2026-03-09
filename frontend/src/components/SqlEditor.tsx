@@ -1,0 +1,337 @@
+import { useRef, useEffect, useCallback } from 'react'
+import Editor, { type OnMount } from '@monaco-editor/react'
+import type * as Monaco from 'monaco-editor'
+import { useSettingsContext } from '@/hooks/useSettings'
+
+// ─── Types ───
+interface SqlEditorProps {
+  value: string
+  onChange: (value: string) => void
+  onExecute?: () => void
+  tables?: { name: string }[]
+  views?: string[]
+  functions?: { name: string }[]
+  connectionId?: string
+}
+
+// ─── Theme Definitions ───
+const MONACO_THEMES: Record<string, Monaco.editor.IStandaloneThemeData> = {
+  dark: {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'keyword', foreground: 'A78BFA', fontStyle: 'bold' },
+      { token: 'string', foreground: '34D399' },
+      { token: 'string.sql', foreground: '34D399' },
+      { token: 'number', foreground: 'F472B6' },
+      { token: 'comment', foreground: '71717A', fontStyle: 'italic' },
+      { token: 'operator', foreground: 'A1A1AA' },
+      { token: 'predefined', foreground: '60A5FA' },
+      { token: 'type', foreground: 'FBBF24' },
+    ],
+    colors: {
+      'editor.background': '#121215',
+      'editor.foreground': '#F4F4F5',
+      'editorCursor.foreground': '#3c83f6',
+      'editor.lineHighlightBackground': '#27272A',
+      'editor.selectionBackground': '#3c83f633',
+      'editorLineNumber.foreground': '#52525B',
+      'editorLineNumber.activeForeground': '#A1A1AA',
+      'editorWidget.background': '#27272A',
+      'editorWidget.border': '#3F3F46',
+      'editorSuggestWidget.background': '#27272A',
+      'editorSuggestWidget.border': '#3F3F46',
+      'editorSuggestWidget.selectedBackground': '#3F3F46',
+      'editorSuggestWidget.highlightForeground': '#3c83f6',
+    },
+  },
+  light: {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      { token: 'keyword', foreground: '7C3AED', fontStyle: 'bold' },
+      { token: 'string', foreground: '059669' },
+      { token: 'string.sql', foreground: '059669' },
+      { token: 'number', foreground: 'DB2777' },
+      { token: 'comment', foreground: '94A3B8', fontStyle: 'italic' },
+      { token: 'operator', foreground: '64748B' },
+      { token: 'predefined', foreground: '2563EB' },
+      { token: 'type', foreground: 'D97706' },
+    ],
+    colors: {
+      'editor.background': '#F8FAFC',
+      'editor.foreground': '#1E293B',
+      'editorCursor.foreground': '#3c83f6',
+      'editor.lineHighlightBackground': '#F1F5F9',
+      'editor.selectionBackground': '#3c83f633',
+      'editorLineNumber.foreground': '#94A3B8',
+      'editorLineNumber.activeForeground': '#64748B',
+      'editorWidget.background': '#FFFFFF',
+      'editorWidget.border': '#E2E8F0',
+      'editorSuggestWidget.background': '#FFFFFF',
+      'editorSuggestWidget.border': '#E2E8F0',
+      'editorSuggestWidget.selectedBackground': '#F1F5F9',
+      'editorSuggestWidget.highlightForeground': '#3c83f6',
+    },
+  },
+  nord: {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'keyword', foreground: 'B48EAD', fontStyle: 'bold' },
+      { token: 'string', foreground: 'A3BE8C' },
+      { token: 'string.sql', foreground: 'A3BE8C' },
+      { token: 'number', foreground: 'D08770' },
+      { token: 'comment', foreground: '616E88', fontStyle: 'italic' },
+      { token: 'operator', foreground: 'D8DEE9' },
+      { token: 'predefined', foreground: '88C0D0' },
+      { token: 'type', foreground: 'EBCB8B' },
+    ],
+    colors: {
+      'editor.background': '#272C36',
+      'editor.foreground': '#ECEFF4',
+      'editorCursor.foreground': '#88C0D0',
+      'editor.lineHighlightBackground': '#3B4252',
+      'editor.selectionBackground': '#88C0D033',
+      'editorLineNumber.foreground': '#4C566A',
+      'editorLineNumber.activeForeground': '#D8DEE9',
+      'editorWidget.background': '#3B4252',
+      'editorWidget.border': '#4C566A',
+      'editorSuggestWidget.background': '#3B4252',
+      'editorSuggestWidget.border': '#4C566A',
+      'editorSuggestWidget.selectedBackground': '#434C5E',
+      'editorSuggestWidget.highlightForeground': '#88C0D0',
+    },
+  },
+  dracula: {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'keyword', foreground: 'FF79C6', fontStyle: 'bold' },
+      { token: 'string', foreground: '50FA7B' },
+      { token: 'string.sql', foreground: '50FA7B' },
+      { token: 'number', foreground: 'BD93F9' },
+      { token: 'comment', foreground: '6272A4', fontStyle: 'italic' },
+      { token: 'operator', foreground: 'F8F8F2' },
+      { token: 'predefined', foreground: '8BE9FD' },
+      { token: 'type', foreground: 'F1FA8C' },
+    ],
+    colors: {
+      'editor.background': '#21222C',
+      'editor.foreground': '#F8F8F2',
+      'editorCursor.foreground': '#BD93F9',
+      'editor.lineHighlightBackground': '#44475A',
+      'editor.selectionBackground': '#BD93F933',
+      'editorLineNumber.foreground': '#6272A4',
+      'editorLineNumber.activeForeground': '#F8F8F2',
+      'editorWidget.background': '#44475A',
+      'editorWidget.border': '#6272A4',
+      'editorSuggestWidget.background': '#44475A',
+      'editorSuggestWidget.border': '#6272A4',
+      'editorSuggestWidget.selectedBackground': '#6272A4',
+      'editorSuggestWidget.highlightForeground': '#BD93F9',
+    },
+  },
+}
+
+export function SqlEditor({
+  value,
+  onChange,
+  onExecute,
+  tables = [],
+  views = [],
+  functions = [],
+}: SqlEditorProps) {
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<typeof Monaco | null>(null)
+  const disposablesRef = useRef<Monaco.IDisposable[]>([])
+  const { settings } = useSettingsContext()
+
+  // Sync theme with app theme
+  useEffect(() => {
+    const syncTheme = () => {
+      const theme = document.documentElement.getAttribute('data-theme') || 'dark'
+      if (monacoRef.current) {
+        monacoRef.current.editor.setTheme(`softdb-${theme}`)
+      }
+    }
+
+    syncTheme()
+    const observer = new MutationObserver(syncTheme)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
+
+  // Register completions when schema data changes
+  const registerCompletions = useCallback((monaco: typeof Monaco) => {
+    // Dispose old completions
+    disposablesRef.current.forEach((d) => d.dispose())
+    disposablesRef.current = []
+
+    const disposable = monaco.languages.registerCompletionItemProvider('sql', {
+      triggerCharacters: ['.', ' '],
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position)
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        }
+
+        const suggestions: Monaco.languages.CompletionItem[] = []
+
+        // Table names
+        tables.forEach((t) => {
+          suggestions.push({
+            label: t.name,
+            kind: monaco.languages.CompletionItemKind.Struct,
+            detail: 'Table',
+            insertText: t.name,
+            range,
+          })
+        })
+
+        // View names
+        views.forEach((v) => {
+          suggestions.push({
+            label: v,
+            kind: monaco.languages.CompletionItemKind.Interface,
+            detail: 'View',
+            insertText: v,
+            range,
+          })
+        })
+
+        // Function names
+        functions.forEach((f) => {
+          suggestions.push({
+            label: f.name,
+            kind: monaco.languages.CompletionItemKind.Function,
+            detail: 'Function',
+            insertText: `${f.name}()`,
+            range,
+          })
+        })
+
+        // SQL snippets
+        const snippets = [
+          { label: 'SELECT', insert: 'SELECT $1\nFROM $2\nWHERE $3;', detail: 'Select query' },
+          { label: 'INSERT INTO', insert: 'INSERT INTO $1 ($2)\nVALUES ($3);', detail: 'Insert row' },
+          { label: 'UPDATE', insert: 'UPDATE $1\nSET $2 = $3\nWHERE $4;', detail: 'Update rows' },
+          { label: 'DELETE FROM', insert: 'DELETE FROM $1\nWHERE $2;', detail: 'Delete rows' },
+          { label: 'CREATE TABLE', insert: 'CREATE TABLE $1 (\n  id SERIAL PRIMARY KEY,\n  $2\n);', detail: 'Create table' },
+          { label: 'ALTER TABLE', insert: 'ALTER TABLE $1\nADD COLUMN $2;', detail: 'Alter table' },
+          { label: 'JOIN', insert: 'JOIN $1 ON $2.$3 = $4.$5', detail: 'Inner join' },
+          { label: 'LEFT JOIN', insert: 'LEFT JOIN $1 ON $2.$3 = $4.$5', detail: 'Left join' },
+          { label: 'GROUP BY', insert: 'GROUP BY $1\nHAVING $2', detail: 'Group results' },
+          { label: 'ORDER BY', insert: 'ORDER BY $1 DESC', detail: 'Order results' },
+        ]
+
+        snippets.forEach((s) => {
+          suggestions.push({
+            label: s.label,
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            detail: s.detail,
+            insertText: s.insert,
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+          })
+        })
+
+        return { suggestions }
+      },
+    })
+
+    disposablesRef.current.push(disposable)
+  }, [tables, views, functions])
+
+  // Re-register completions when schema changes
+  useEffect(() => {
+    if (monacoRef.current) {
+      registerCompletions(monacoRef.current)
+    }
+  }, [registerCompletions])
+
+  const handleMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor
+    monacoRef.current = monaco
+
+    // Define all themes
+    Object.entries(MONACO_THEMES).forEach(([name, themeData]) => {
+      monaco.editor.defineTheme(`softdb-${name}`, themeData)
+    })
+
+    // Set initial theme
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark'
+    monaco.editor.setTheme(`softdb-${currentTheme}`)
+
+    // Register completions
+    registerCompletions(monaco)
+
+    // Ctrl+E → Execute
+    editor.addAction({
+      id: 'execute-query',
+      label: 'Execute Query',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE],
+      run: () => onExecute?.(),
+    })
+
+    // Focus
+    editor.focus()
+  }
+
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      disposablesRef.current.forEach((d) => d.dispose())
+      disposablesRef.current = []
+    }
+  }, [])
+
+  return (
+    <Editor
+      height="100%"
+      language="sql"
+      value={value}
+      onChange={(v) => onChange(v || '')}
+      onMount={handleMount}
+      options={{
+        fontSize: settings.fontSize,
+        fontFamily: "'JetBrains Mono', monospace",
+        lineHeight: 28,
+        padding: { top: 16, bottom: 16 },
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        lineNumbers: settings.lineNumbers ? 'on' : 'off',
+        renderLineHighlight: 'line',
+        cursorBlinking: 'smooth',
+        cursorSmoothCaretAnimation: 'on',
+        smoothScrolling: true,
+        contextmenu: true,
+        automaticLayout: true,
+        tabSize: settings.tabSize,
+        wordWrap: settings.wordWrap ? 'on' : 'off',
+        suggestOnTriggerCharacters: true,
+        quickSuggestions: true,
+        suggest: {
+          showKeywords: true,
+          showSnippets: true,
+          showFunctions: true,
+        },
+        overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true,
+        overviewRulerBorder: false,
+        scrollbar: {
+          verticalScrollbarSize: 8,
+          horizontalScrollbarSize: 8,
+        },
+      }}
+      loading={
+        <div className="flex items-center justify-center h-full text-text-muted text-sm">
+          Loading editor...
+        </div>
+      }
+    />
+  )
+}

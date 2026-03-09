@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import {
   useConnections,
   useDeleteConnection,
@@ -8,6 +7,8 @@ import {
 } from '@/hooks/useConnections'
 import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 import { ConnectionModal } from '@/components/ConnectionModal'
+import { SettingsModal } from '@/components/SettingsModal'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 // ─── Database Branding ───
 const DB_CARD_COLORS: Record<string, { bg: string; accent: string; icon: string; label: string }> = {
@@ -19,12 +20,17 @@ const DB_CARD_COLORS: Record<string, { bg: string; accent: string; icon: string;
   redshift: { bg: 'bg-[#8C4FFF]/10', accent: '#8C4FFF', icon: 'cloud', label: 'Redshift' },
 }
 
-export function ConnectionHub() {
-  const navigate = useNavigate()
+interface ConnectionHubProps {
+  onConnect: (connectionId: string) => void
+}
+
+export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingConn, setEditingConn] = useState<ConnectionConfig | null>(null)
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [deletingConn, setDeletingConn] = useState<ConnectionConfig | null>(null)
 
   const { data: connections = [], isLoading } = useConnections()
   const connectMutation = useConnect()
@@ -46,17 +52,9 @@ export function ConnectionHub() {
 
   const handleCardClick = useCallback(
     async (conn: ConnectionConfig) => {
-      if (conn.status !== 'connected') {
-        try {
-          await connectMutation.mutateAsync(conn.id)
-        } catch {
-          // Connection failed — user can see status
-          return
-        }
-      }
-      navigate({ to: '/explorer/$connectionId', params: { connectionId: conn.id } })
+      onConnect(conn.id)
     },
-    [connectMutation, navigate]
+    [onConnect]
   )
 
   const handleContextAction = useCallback(
@@ -74,7 +72,7 @@ export function ConnectionHub() {
           setModalOpen(true)
           break
         case 'delete':
-          deleteMutation.mutate(conn.id)
+          setDeletingConn(conn)
           break
       }
     },
@@ -93,18 +91,25 @@ export function ConnectionHub() {
         {/* Top Row */}
         <div className="w-full max-w-[1200px] flex items-center justify-between relative mb-8">
           <div className="flex items-center gap-3 select-none">
-            <img src="/softdb-logo.png" alt="SoftDB" className="size-8 rounded-lg shadow-glow" />
-            <h1 className="font-bold text-lg tracking-tight text-white/90">SoftDB</h1>
+            <img src="/softdb-logo.png" alt="SoftDB" className="size-8 rounded-lg" />
+            <h1 className="font-bold text-lg tracking-tight text-text-main">SoftDB</h1>
           </div>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center justify-center size-9 rounded-lg text-text-muted hover:text-text-main hover:bg-white/5 transition-all duration-200"
+            title="Settings"
+          >
+            <span className="material-symbols-outlined text-[20px]">settings</span>
+          </button>
         </div>
 
         {/* Search */}
         <div className="w-full max-w-[480px] relative group z-10 animate-fade-in">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted group-focus-within:text-primary transition-colors duration-300">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10 text-text-muted group-focus-within:text-primary transition-colors duration-300">
             <span className="material-symbols-outlined text-[20px]">search</span>
           </div>
           <input
-            className="block w-full rounded-lg border-0 py-3 pl-10 pr-12 text-sm text-text-main placeholder:text-text-muted glass-panel focus:ring-2 focus:ring-primary focus:bg-bg-card transition-all duration-300 shadow-lg outline-none"
+            className="block w-full rounded-lg border-0 py-3 pl-10 pr-12 text-sm text-text-main placeholder:text-text-muted glass-panel focus:ring-2 focus:ring-primary focus:bg-bg-card transition-all duration-300 outline-none"
             placeholder="Search connections..."
             type="text"
             value={search}
@@ -124,7 +129,7 @@ export function ConnectionHub() {
           {/* Grid Actions */}
           <div className="flex items-end justify-between mb-8 animate-fade-in" style={{ animationDelay: '0.15s' }}>
             <div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">Connections</h2>
+              <h2 className="text-2xl font-bold text-text-main tracking-tight">Connections</h2>
               <p className="text-text-muted text-sm mt-1">
                 {isLoading
                   ? 'Loading...'
@@ -135,7 +140,7 @@ export function ConnectionHub() {
             </div>
             <button
               onClick={openNewModal}
-              className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 shadow-glow hover:shadow-lg active:scale-[0.97]"
+              className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 active:scale-[0.97]"
             >
               <span className="material-symbols-outlined text-[18px]">add</span>
               New Connection
@@ -156,8 +161,6 @@ export function ConnectionHub() {
                     contextMenu?.id === conn.id ? null : { id: conn.id, x: e.clientX, y: e.clientY }
                   )
                 }}
-                onAction={(action) => handleContextAction(action, conn)}
-                menuOpen={contextMenu?.id === conn.id}
               />
             ))}
 
@@ -171,7 +174,7 @@ export function ConnectionHub() {
                   add
                 </span>
               </div>
-              <span className="text-sm font-medium text-text-muted group-hover:text-white/80 transition-colors duration-300">
+              <span className="text-sm font-medium text-text-muted group-hover:text-text-main transition-colors duration-300">
                 Connect New Database
               </span>
             </div>
@@ -203,7 +206,31 @@ export function ConnectionHub() {
       </div>
 
       {/* Click-away to close context menu */}
-      {contextMenu && <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />}
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+          {(() => {
+            const conn = connections.find((c) => c.id === contextMenu.id)
+            if (!conn) return null
+            const status = conn.status as 'connected' | 'idle' | 'offline'
+            return (
+              <div
+                className="fixed w-40 bg-bg-card border border-border-subtle rounded-lg z-50 py-1 animate-fade-in"
+                style={{ left: contextMenu.x, top: contextMenu.y }}
+              >
+                {status === 'connected' ? (
+                  <MenuItem icon="link_off" label="Disconnect" onClick={() => handleContextAction('disconnect', conn)} />
+                ) : (
+                  <MenuItem icon="link" label="Connect" onClick={() => handleContextAction('connect', conn)} />
+                )}
+                <MenuItem icon="edit" label="Edit" onClick={() => handleContextAction('edit', conn)} />
+                <div className="h-px bg-border-subtle mx-2 my-1" />
+                <MenuItem icon="delete" label="Delete" onClick={() => handleContextAction('delete', conn)} danger />
+              </div>
+            )
+          })()}
+        </>
+      )}
 
       {/* Connection Modal */}
       <ConnectionModal
@@ -213,6 +240,28 @@ export function ConnectionHub() {
           setEditingConn(null)
         }}
         editConnection={editingConn}
+      />
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deletingConn}
+        title="Delete Connection"
+        message={`Are you sure you want to delete "${deletingConn?.name}"? This will also remove all query history for this connection.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        danger
+        icon="delete"
+        onConfirm={() => {
+          if (deletingConn) deleteMutation.mutate(deletingConn.id)
+          setDeletingConn(null)
+        }}
+        onCancel={() => setDeletingConn(null)}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </>
   )
@@ -224,11 +273,9 @@ interface ConnectionCardProps {
   colors: { bg: string; accent: string; icon: string; label: string }
   onClick: () => void
   onMenuClick: (e: React.MouseEvent) => void
-  onAction: (action: string) => void
-  menuOpen: boolean
 }
 
-function ConnectionCard({ conn, colors, onClick, onMenuClick, onAction, menuOpen }: ConnectionCardProps) {
+function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardProps) {
   const status = conn.status as 'connected' | 'idle' | 'offline'
   const hostDisplay = conn.type === DatabaseType.SQLite
     ? conn.filePath || conn.database
@@ -237,7 +284,7 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick, onAction, menuOpen
   return (
     <div
       onClick={onClick}
-      className="connection-card group relative flex flex-col justify-between h-[160px] p-5 rounded-xl bg-bg-card border border-border-subtle cursor-pointer shadow-soft hover:translate-y-[-3px] hover:shadow-[0_12px_32px_-4px_rgba(0,0,0,0.45)] hover:border-primary/30 hover:bg-[#2a2a2f]"
+      className="connection-card group relative flex flex-col justify-between h-[160px] p-5 rounded-xl bg-bg-card border border-border-subtle cursor-pointer hover:translate-y-[-3px] hover:border-primary/30 hover:bg-bg-hover"
     >
       {/* Top Row */}
       <div className="flex justify-between items-start">
@@ -249,28 +296,12 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick, onAction, menuOpen
             {colors.icon}
           </span>
         </div>
-        <div className="relative">
-          <button
-            onClick={onMenuClick}
-            className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-white p-1.5 rounded-md hover:bg-white/10 transition-all duration-200"
-          >
-            <span className="material-symbols-outlined text-[20px]">more_horiz</span>
-          </button>
-
-          {/* Dropdown Menu */}
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-40 bg-bg-card border border-border-subtle rounded-lg shadow-xl z-50 py-1 animate-fade-in">
-              {status === 'connected' ? (
-                <MenuItem icon="link_off" label="Disconnect" onClick={() => onAction('disconnect')} />
-              ) : (
-                <MenuItem icon="link" label="Connect" onClick={() => onAction('connect')} />
-              )}
-              <MenuItem icon="edit" label="Edit" onClick={() => onAction('edit')} />
-              <div className="h-px bg-border-subtle mx-2 my-1" />
-              <MenuItem icon="delete" label="Delete" onClick={() => onAction('delete')} danger />
-            </div>
-          )}
-        </div>
+        <button
+          onClick={onMenuClick}
+          className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-text-main p-1.5 rounded-md hover:bg-white/10 transition-all duration-200"
+        >
+          <span className="material-symbols-outlined text-[20px]">more_horiz</span>
+        </button>
       </div>
 
       {/* Bottom Info */}

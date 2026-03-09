@@ -10,43 +10,33 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ExplorerConnectionIdRouteImport } from './routes/explorer/$connectionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ExplorerConnectionIdRoute = ExplorerConnectionIdRouteImport.update({
-  id: '/explorer/$connectionId',
-  path: '/explorer/$connectionId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/explorer/$connectionId': typeof ExplorerConnectionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/explorer/$connectionId': typeof ExplorerConnectionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/explorer/$connectionId': typeof ExplorerConnectionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/explorer/$connectionId'
+  fullPaths: '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/explorer/$connectionId'
-  id: '__root__' | '/' | '/explorer/$connectionId'
+  to: '/'
+  id: '__root__' | '/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ExplorerConnectionIdRoute: typeof ExplorerConnectionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,19 +48,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/explorer/$connectionId': {
-      id: '/explorer/$connectionId'
-      path: '/explorer/$connectionId'
-      fullPath: '/explorer/$connectionId'
-      preLoaderRoute: typeof ExplorerConnectionIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ExplorerConnectionIdRoute: ExplorerConnectionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
