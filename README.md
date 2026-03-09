@@ -92,6 +92,10 @@ soft-db/
 └── build/               # Build config, icons, platform assets
 ```
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=zane-tv/soft-db&type=Date)](https://star-history.com/#zane-tv/soft-db&Date)
+
 ## 📄 License
 
 [MIT](LICENSE) — Made with ❤️ by [Zane](https://github.com/zane-tv)
