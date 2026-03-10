@@ -164,7 +164,11 @@ export function SqlEditor({
   useEffect(() => { tablesRef.current = tables }, [tables])
   useEffect(() => { viewsRef.current = views }, [views])
   useEffect(() => { functionsRef.current = functions }, [functions])
-  useEffect(() => { connectionIdRef.current = connectionId }, [connectionId])
+  useEffect(() => {
+    connectionIdRef.current = connectionId
+    columnCacheRef.current.clear()
+    pendingFetchRef.current.clear()
+  }, [connectionId])
 
   // Sync theme with app theme
   useEffect(() => {
