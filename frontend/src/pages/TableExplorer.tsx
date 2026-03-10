@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useTables, useViews, useFunctions, useColumns, useExecuteQuery } from '@/hooks/useSchema'
+import { useTables, useViews, useFunctions, useColumns, useExecuteQuery, useQueryHistory } from '@/hooks/useSchema'
 import { useConnections } from '@/hooks/useConnections'
 import { ExplorerSidebar } from '@/components/ExplorerSidebar'
 import { EditorTabBar } from '@/components/EditorTabBar'
@@ -52,6 +52,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
   const { data: views = [] } = useViews(connectionId)
   const { data: functions = [] } = useFunctions(connectionId)
   const executeMutation = useExecuteQuery()
+  const { refetch: refetchHistory } = useQueryHistory(connectionId)
   const { settings } = useSettingsContext()
 
   const conn = connections.find((c) => c.id === connectionId)
@@ -125,6 +126,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
           )
         )
       }
+      refetchHistory()
     } catch (err) {
       const errorResult = {
         columns: [],
@@ -144,8 +146,9 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
       )
     } finally {
       setIsExecuting(false)
+      refetchHistory()
     }
-  }, [activeTab, activeTabId, connectionId, executeMutation, isExecuting])
+  }, [activeTab, activeTabId, connectionId, executeMutation, isExecuting, refetchHistory])
 
   // Keyboard shortcut: Ctrl/Cmd+E to execute (global fallback)
   useEffect(() => {

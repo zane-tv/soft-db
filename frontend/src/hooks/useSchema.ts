@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as SchemaService from '../../bindings/soft-db/services/schemaservice'
 import * as QueryService from '../../bindings/soft-db/services/queryservice'
 
@@ -45,17 +45,23 @@ export function useFunctions(connectionId: string) {
 
 // ─── Query Execution ───
 export function useExecuteQuery() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ connectionId, query }: { connectionId: string; query: string }) =>
       QueryService.ExecuteQuery(connectionId, query),
+    onSettled: (_data, _err, { connectionId }) => {
+      queryClient.refetchQueries({ queryKey: ['history', connectionId] })
+    },
   })
 }
+
 
 export function useQueryHistory(connectionId: string, limit = 50) {
   return useQuery({
     queryKey: ['history', connectionId, limit] as const,
     queryFn: () => QueryService.GetHistory(connectionId, limit),
     enabled: !!connectionId,
+    staleTime: 0,
   })
 }
 
