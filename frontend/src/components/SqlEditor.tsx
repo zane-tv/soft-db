@@ -243,7 +243,7 @@ export function SqlEditor({
               pendingFetchRef.current.add(tableName)
               SchemaService.GetColumns(currentConnectionId, tableName)
                 .then((cols) => { columnCacheRef.current.set(tableName, cols) })
-                .catch(() => { })
+                .catch((err) => { console.warn('GetColumns failed', { connectionId: currentConnectionId, tableName, err }) })
                 .finally(() => {
                   pendingFetchRef.current.delete(tableName)
                   editorRef.current?.trigger('keyboard', 'editor.action.triggerSuggest', {})
