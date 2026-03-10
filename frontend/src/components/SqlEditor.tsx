@@ -2,6 +2,8 @@ import { useRef, useEffect, useCallback } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { useSettingsContext } from '@/hooks/useSettings'
+import * as SchemaService from '../../bindings/soft-db/services/schemaservice'
+import type { ColumnInfo } from '../../bindings/soft-db/internal/driver/models'
 
 // ─── Types ───
 interface SqlEditorProps {
@@ -141,11 +143,28 @@ export function SqlEditor({
   tables = [],
   views = [],
   functions = [],
+  connectionId,
 }: SqlEditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof Monaco | null>(null)
   const disposablesRef = useRef<Monaco.IDisposable[]>([])
+  // Cache: tableName → fetched columns (lazy, on-demand)
+  const columnCacheRef = useRef<Map<string, ColumnInfo[]>>(new Map())
+  // Track in-flight fetches to avoid duplicate requests
+  const pendingFetchRef = useRef<Set<string>>(new Set())
+  // ── Ref-based schema data ──
+  // Provider is registered ONCE at mount; refs ensure it always reads the latest data
+  const tablesRef = useRef(tables)
+  const viewsRef = useRef(views)
+  const functionsRef = useRef(functions)
+  const connectionIdRef = useRef(connectionId)
   const { settings } = useSettingsContext()
+
+  // Keep refs in sync with latest props (no re-registration needed)
+  useEffect(() => { tablesRef.current = tables }, [tables])
+  useEffect(() => { viewsRef.current = views }, [views])
+  useEffect(() => { functionsRef.current = functions }, [functions])
+  useEffect(() => { connectionIdRef.current = connectionId }, [connectionId])
 
   // Sync theme with app theme
   useEffect(() => {
@@ -162,15 +181,22 @@ export function SqlEditor({
     return () => observer.disconnect()
   }, [])
 
-  // Register completions when schema data changes
+  // Register completions — called ONCE at editor mount.
+  // Reads data via refs so it always has the latest tables/views/functions.
   const registerCompletions = useCallback((monaco: typeof Monaco) => {
-    // Dispose old completions
     disposablesRef.current.forEach((d) => d.dispose())
     disposablesRef.current = []
 
     const disposable = monaco.languages.registerCompletionItemProvider('sql', {
-      triggerCharacters: ['.', ' '],
+      triggerCharacters: ['.'],
       provideCompletionItems: (model, position) => {
+        // ── Read latest data from refs ──
+        const currentTables = tablesRef.current
+        const currentViews = viewsRef.current
+        const currentFunctions = functionsRef.current
+        const currentConnectionId = connectionIdRef.current
+        const tableNames = new Set(currentTables.map((t) => t.name))
+
         const word = model.getWordUntilPosition(position)
         const range = {
           startLineNumber: position.lineNumber,
@@ -179,10 +205,60 @@ export function SqlEditor({
           endColumn: word.endColumn,
         }
 
+        // ── Detect `tableName.` context ──
+        const charBeforeWord = model.getValueInRange({
+          startLineNumber: position.lineNumber,
+          startColumn: word.startColumn - 1,
+          endLineNumber: position.lineNumber,
+          endColumn: word.startColumn,
+        })
+
+        if (charBeforeWord === '.') {
+          const lineUpToDot = model.getValueInRange({
+            startLineNumber: position.lineNumber,
+            startColumn: 1,
+            endLineNumber: position.lineNumber,
+            endColumn: word.startColumn - 1,
+          })
+          const match = lineUpToDot.match(/([\w_]+)\s*$/)
+          const tableName = match ? match[1] : null
+
+          if (tableName && tableNames.has(tableName) && currentConnectionId) {
+            const cached = columnCacheRef.current.get(tableName)
+
+            if (cached) {
+              return {
+                suggestions: cached.map((col) => ({
+                  label: col.name,
+                  kind: monaco.languages.CompletionItemKind.Field,
+                  detail: `${col.type}${col.primaryKey ? ' 🔑 PK' : ''}${col.nullable ? '' : ' NOT NULL'}`,
+                  insertText: col.name,
+                  sortText: col.primaryKey ? '0' + col.name : '1' + col.name,
+                  range,
+                })),
+              }
+            }
+
+            if (!pendingFetchRef.current.has(tableName)) {
+              pendingFetchRef.current.add(tableName)
+              SchemaService.GetColumns(currentConnectionId, tableName)
+                .then((cols) => { columnCacheRef.current.set(tableName, cols) })
+                .catch(() => { })
+                .finally(() => {
+                  pendingFetchRef.current.delete(tableName)
+                  editorRef.current?.trigger('keyboard', 'editor.action.triggerSuggest', {})
+                })
+            }
+
+            // Return empty while fetching — widget stays silent, re-triggers when done
+            return { suggestions: [] }
+          }
+        }
+
+        // ── Normal suggestions: tables, views, functions, snippets ──
         const suggestions: Monaco.languages.CompletionItem[] = []
 
-        // Table names
-        tables.forEach((t) => {
+        currentTables.forEach((t) => {
           suggestions.push({
             label: t.name,
             kind: monaco.languages.CompletionItemKind.Struct,
@@ -192,8 +268,7 @@ export function SqlEditor({
           })
         })
 
-        // View names
-        views.forEach((v) => {
+        currentViews.forEach((v) => {
           suggestions.push({
             label: v,
             kind: monaco.languages.CompletionItemKind.Interface,
@@ -203,8 +278,7 @@ export function SqlEditor({
           })
         })
 
-        // Function names
-        functions.forEach((f) => {
+        currentFunctions.forEach((f) => {
           suggestions.push({
             label: f.name,
             kind: monaco.languages.CompletionItemKind.Function,
@@ -214,7 +288,6 @@ export function SqlEditor({
           })
         })
 
-        // SQL snippets
         const snippets = [
           { label: 'SELECT', insert: 'SELECT $1\nFROM $2\nWHERE $3;', detail: 'Select query' },
           { label: 'INSERT INTO', insert: 'INSERT INTO $1 ($2)\nVALUES ($3);', detail: 'Insert row' },
@@ -244,14 +317,8 @@ export function SqlEditor({
     })
 
     disposablesRef.current.push(disposable)
-  }, [tables, views, functions])
-
-  // Re-register completions when schema changes
-  useEffect(() => {
-    if (monacoRef.current) {
-      registerCompletions(monacoRef.current)
-    }
-  }, [registerCompletions])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])  // ← empty deps: register ONCE, data comes from refs
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
@@ -268,6 +335,20 @@ export function SqlEditor({
 
     // Register completions
     registerCompletions(monaco)
+
+    // ── Manual suggest trigger ──
+    // quickSuggestions may not fire reliably in some WebView environments (e.g., WebKit2GTK on Linux).
+    // We manually trigger the suggest widget on every content change when the cursor is on a word.
+    editor.onDidChangeModelContent(() => {
+      const model = editor.getModel()
+      const pos = editor.getPosition()
+      if (!model || !pos) return
+      const word = model.getWordUntilPosition(pos)
+      // Only trigger when user is actively typing a word (not on space/newline/symbol)
+      if (word.word.length >= 1) {
+        editor.trigger('keyboard', 'editor.action.triggerSuggest', {})
+      }
+    })
 
     // Ctrl+E → Execute
     editor.addAction({
@@ -313,11 +394,16 @@ export function SqlEditor({
         tabSize: settings.tabSize,
         wordWrap: settings.wordWrap ? 'on' : 'off',
         suggestOnTriggerCharacters: true,
-        quickSuggestions: true,
+        quickSuggestions: { other: 'on', comments: false, strings: false },
+        quickSuggestionsDelay: 0,
+        wordBasedSuggestions: 'off',
         suggest: {
           showKeywords: true,
           showSnippets: true,
           showFunctions: true,
+          showStructs: true,   // TableInfo (CompletionItemKind.Struct)
+          showFields: true,    // ColumnInfo (CompletionItemKind.Field)
+          showInterfaces: true, // Views (CompletionItemKind.Interface)
         },
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,

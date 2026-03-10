@@ -54,12 +54,19 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string) (*driver.
 		}
 	}
 
+	// For SELECT queries, RowCount holds the actual returned rows.
+	// For DML queries (INSERT/UPDATE/DELETE), AffectedRows holds the count.
+	rowsCount := result.AffectedRows
+	if result.RowCount > 0 {
+		rowsCount = result.RowCount
+	}
+
 	s.store.AddHistory(store.HistoryEntry{
 		ConnectionID:  connectionID,
 		QueryText:     query,
 		Status:        status,
 		ExecutionTime: result.ExecutionTime,
-		RowsAffected:  result.AffectedRows,
+		RowsAffected:  rowsCount,
 		ErrorMessage:  result.Error,
 	})
 
