@@ -52,7 +52,10 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
   const { data: views = [] } = useViews(connectionId)
   const { data: functions = [] } = useFunctions(connectionId)
   const executeMutation = useExecuteQuery()
-  const { refetch: refetchHistory } = useQueryHistory(connectionId)
+  // Mount useQueryHistory here (not just in the drawer) so there is always an
+  // active observer — this lets onSettled's refetchQueries trigger immediately
+  // even when the Activity Log drawer is closed.
+  useQueryHistory(connectionId)
   const { settings } = useSettingsContext()
 
   const conn = connections.find((c) => c.id === connectionId)
@@ -126,7 +129,6 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
           )
         )
       }
-      refetchHistory()
     } catch (err) {
       const errorResult = {
         columns: [],
@@ -146,9 +148,8 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
       )
     } finally {
       setIsExecuting(false)
-      refetchHistory()
     }
-  }, [activeTab, activeTabId, connectionId, executeMutation, isExecuting, refetchHistory])
+  }, [activeTab, activeTabId, connectionId, executeMutation, isExecuting])
 
   // Keyboard shortcut: Ctrl/Cmd+E to execute (global fallback)
   useEffect(() => {
