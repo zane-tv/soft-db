@@ -109,7 +109,9 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
                 const status = conn.status as string
                 const hostDisplay = conn.type === DatabaseType.SQLite
                   ? conn.filePath || conn.database
-                  : `${conn.host}:${conn.port}`
+                  : conn.uri
+                    ? (() => { try { const u = new URL(conn.uri); return u.hostname || conn.uri; } catch { return conn.uri; } })()
+                    : `${conn.host}:${conn.port}`
 
                 return (
                   <button

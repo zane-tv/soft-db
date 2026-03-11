@@ -273,7 +273,11 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
             )}
 
             {/* Export */}
-            <button className="flex items-center gap-1.5 px-2 py-1 hover:bg-bg-hover/50 rounded text-text-muted hover:text-text-main transition-colors">
+            <button
+              onClick={() => alert('Export coming soon!')}
+              aria-label="Export results"
+              className="flex items-center gap-1.5 px-2 py-1 hover:bg-bg-hover/50 rounded text-text-muted hover:text-text-main transition-colors"
+            >
               <span className="material-symbols-outlined text-[16px]">download</span>
               Export
             </button>
@@ -290,7 +294,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
           </div>
         </div>
       ) : queryResult?.columns?.length ? (
-        <div ref={resultContainerRef} className="flex-1 overflow-auto">
+        <div ref={resultContainerRef} className="flex-1 overflow-auto" role="grid" aria-label="Query results">
           {/* ─── HEADER (sticky, outside virtual scroll) ─── */}
           <div className="sticky top-0 z-10 bg-bg-card" style={{ width: columnVirtualizer.getTotalSize() }}>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -304,6 +308,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
                   return (
                     <div
                       key={header.id}
+                      role="columnheader"
                       className="px-4 py-2.5 text-xs font-bold text-text-muted uppercase tracking-wider border-b border-border-subtle/50 shrink-0"
                       style={{ width: vc.size }}
                     >

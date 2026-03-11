@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
+import { MongoSchemaEditor } from './MongoSchemaEditor'
 import {
   DndContext,
   closestCenter,
@@ -55,9 +56,23 @@ interface StructureDesignerModalProps {
   connectionId: string
   tableName: string
   dbType?: string
+  database?: string
 }
 
-export function StructureDesignerModal({ open, onClose, connectionId, tableName, dbType }: StructureDesignerModalProps) {
+export function StructureDesignerModal({ open, onClose, connectionId, tableName, dbType, database }: StructureDesignerModalProps) {
+  // MongoDB: use dedicated schema validation editor
+  if (dbType === 'mongodb' && database) {
+    return (
+      <MongoSchemaEditor
+        open={open}
+        onClose={onClose}
+        connectionId={connectionId}
+        collection={tableName}
+        database={database}
+      />
+    )
+  }
+
   const isNewTable = tableName === '__new__'
   const { data: serverColumns = [] } = useColumns(connectionId, isNewTable ? '' : tableName)
 

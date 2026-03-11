@@ -15,7 +15,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
- * BatchUpdateCells applies multiple cell edits
+ * BatchUpdateCells applies multiple cell edits, stopping on first error
  */
 export function BatchUpdateCells(connectionID: string, reqs: $models.CellUpdateRequest[]): $CancellablePromise<$models.BatchUpdateResult | null> {
     return $Call.ByID(1247905070, connectionID, reqs).then(($result: any) => {

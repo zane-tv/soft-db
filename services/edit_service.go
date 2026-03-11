@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"soft-db/internal/driver"
 	"soft-db/internal/store"
 )
 
@@ -88,27 +89,27 @@ func (s *EditService) UpdateCell(connectionID string, req CellUpdateRequest) (*C
 		}, nil
 	}
 
-	// Build UPDATE SQL
-	sql, args := buildUpdateSQL(req)
-
-	result := &CellUpdateResult{
-		GeneratedSQL: sql,
-	}
-
-	// Execute
+	// Get driver
 	drv, err := s.connService.GetDriver(connectionID)
 	if err != nil {
-		result.Error = err.Error()
-		return result, nil
+		return &CellUpdateResult{Error: err.Error()}, nil
 	}
 
+	dbType := drv.Type()
+
+	// Build parameterized UPDATE SQL
+	displaySQL, execSQL, args := buildParamUpdateSQL(req, dbType)
+
+	result := &CellUpdateResult{
+		GeneratedSQL: displaySQL,
+	}
+
+	// Execute with parameterized args
 	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Build the full SQL with inlined values for execution
-	execSQL := buildExecSQL(req)
-	qr, err := drv.Execute(ctx, execSQL)
+	qr, err := drv.ExecuteArgs(ctx, execSQL, args...)
 	if err != nil {
 		result.Error = err.Error()
 		return result, nil
@@ -123,7 +124,7 @@ func (s *EditService) UpdateCell(connectionID string, req CellUpdateRequest) (*C
 	// Record in history
 	s.store.AddHistory(store.HistoryEntry{
 		ConnectionID:  connectionID,
-		QueryText:     sql + " -- args: " + fmt.Sprintf("%v", args),
+		QueryText:     displaySQL,
 		Status:        "mutation",
 		ExecutionTime: qr.ExecutionTime,
 		RowsAffected:  qr.AffectedRows,
@@ -132,7 +133,7 @@ func (s *EditService) UpdateCell(connectionID string, req CellUpdateRequest) (*C
 	return result, nil
 }
 
-// BatchUpdateCells applies multiple cell edits
+// BatchUpdateCells applies multiple cell edits, stopping on first error
 func (s *EditService) BatchUpdateCells(connectionID string, reqs []CellUpdateRequest) (*BatchUpdateResult, error) {
 	batch := &BatchUpdateResult{
 		Results: make([]CellUpdateResult, 0, len(reqs)),
@@ -147,13 +148,16 @@ func (s *EditService) BatchUpdateCells(connectionID string, reqs []CellUpdateReq
 				Error:        err.Error(),
 			})
 			batch.TotalFailed++
-			continue
+			// Stop on first error to avoid partial inconsistent state
+			break
 		}
 		batch.Results = append(batch.Results, *result)
 		if result.Success {
 			batch.TotalSuccess++
 		} else {
 			batch.TotalFailed++
+			// Stop on first error
+			break
 		}
 	}
 
@@ -173,34 +177,48 @@ func (s *EditService) InsertRow(connectionID string, table string, values map[st
 		return &InsertResult{Success: false, Error: "missing table or values"}, nil
 	}
 
-	// Build INSERT SQL
-	var cols []string
-	var vals []string
-	for col, val := range values {
-		cols = append(cols, quoteIdent(col))
-		vals = append(vals, formatValue(val))
-	}
-
-	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		quoteIdent(table),
-		strings.Join(cols, ", "),
-		strings.Join(vals, ", "),
-	)
-
-	result := &InsertResult{GeneratedSQL: sql}
-
-	// Execute
 	drv, err := s.connService.GetDriver(connectionID)
 	if err != nil {
-		result.Error = err.Error()
-		return result, nil
+		return &InsertResult{Success: false, Error: err.Error()}, nil
 	}
 
+	dbType := drv.Type()
+
+	// Build parameterized INSERT
+	var cols []string
+	var args []interface{}
+	for col, val := range values {
+		cols = append(cols, quoteIdent(col))
+		args = append(args, val)
+	}
+
+	placeholderList := makePlaceholders(dbType, len(args))
+
+	execSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		quoteIdent(table),
+		strings.Join(cols, ", "),
+		strings.Join(placeholderList, ", "),
+	)
+
+	// Build display SQL with inlined values (for history)
+	var displayVals []string
+	for _, val := range args {
+		displayVals = append(displayVals, formatValue(val))
+	}
+	displaySQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+		quoteIdent(table),
+		strings.Join(cols, ", "),
+		strings.Join(displayVals, ", "),
+	)
+
+	result := &InsertResult{GeneratedSQL: displaySQL}
+
+	// Execute with parameterized args
 	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	qr, err := drv.Execute(ctx, sql)
+	qr, err := drv.ExecuteArgs(ctx, execSQL, args...)
 	if err != nil {
 		result.Error = err.Error()
 		return result, nil
@@ -215,7 +233,7 @@ func (s *EditService) InsertRow(connectionID string, table string, values map[st
 	// Record in history
 	s.store.AddHistory(store.HistoryEntry{
 		ConnectionID:  connectionID,
-		QueryText:     sql,
+		QueryText:     displaySQL,
 		Status:        "mutation",
 		ExecutionTime: qr.ExecutionTime,
 		RowsAffected:  qr.AffectedRows,
@@ -243,6 +261,8 @@ func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList
 		return &DeleteResult{Success: false, Error: err.Error()}, nil
 	}
 
+	dbType := drv.Type()
+
 	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -254,18 +274,29 @@ func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList
 	var totalDeleted int64
 
 	for _, pkValues := range pkValuesList {
+		var args []interface{}
 		whereParts := make([]string, 0, len(pkValues))
+		displayWhere := make([]string, 0, len(pkValues))
+		argIdx := 1
+
 		for col, val := range pkValues {
-			whereParts = append(whereParts, fmt.Sprintf("%s = %s", quoteIdent(col), formatValue(val)))
+			whereParts = append(whereParts, fmt.Sprintf("%s = %s", quoteIdent(col), placeholder(dbType, argIdx)))
+			displayWhere = append(displayWhere, fmt.Sprintf("%s = %s", quoteIdent(col), formatValue(val)))
+			args = append(args, val)
+			argIdx++
 		}
 
-		sql := fmt.Sprintf("DELETE FROM %s WHERE %s",
+		execSQL := fmt.Sprintf("DELETE FROM %s WHERE %s",
 			quoteIdent(table),
 			strings.Join(whereParts, " AND "),
 		)
-		result.GeneratedSQL = append(result.GeneratedSQL, sql)
+		displaySQL := fmt.Sprintf("DELETE FROM %s WHERE %s",
+			quoteIdent(table),
+			strings.Join(displayWhere, " AND "),
+		)
+		result.GeneratedSQL = append(result.GeneratedSQL, displaySQL)
 
-		qr, err := drv.Execute(ctx, sql)
+		qr, err := drv.ExecuteArgs(ctx, execSQL, args...)
 		if err != nil {
 			result.Error = err.Error()
 			return result, nil
@@ -280,7 +311,7 @@ func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList
 		// Record in history
 		s.store.AddHistory(store.HistoryEntry{
 			ConnectionID:  connectionID,
-			QueryText:     sql,
+			QueryText:     displaySQL,
 			Status:        "mutation",
 			ExecutionTime: qr.ExecutionTime,
 			RowsAffected:  qr.AffectedRows,
@@ -292,52 +323,59 @@ func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList
 	return result, nil
 }
 
-// buildUpdateSQL creates a parameterized UPDATE statement (for display)
-func buildUpdateSQL(req CellUpdateRequest) (string, []interface{}) {
-	var args []interface{}
+// ─── SQL Builder Helpers ───
 
-	var setCols string
+// buildParamUpdateSQL builds a parameterized UPDATE with display SQL and exec SQL
+func buildParamUpdateSQL(req CellUpdateRequest, dbType driver.DatabaseType) (displaySQL, execSQL string, args []interface{}) {
+	argIdx := 1
+
+	// SET clause
+	var setDisplay, setExec string
 	if req.NewValue == nil {
-		setCols = fmt.Sprintf("%s = NULL", quoteIdent(req.Column))
+		setDisplay = fmt.Sprintf("%s = NULL", quoteIdent(req.Column))
+		setExec = setDisplay
 	} else {
-		setCols = fmt.Sprintf("%s = ?", quoteIdent(req.Column))
+		setDisplay = fmt.Sprintf("%s = %s", quoteIdent(req.Column), formatValue(req.NewValue))
+		setExec = fmt.Sprintf("%s = %s", quoteIdent(req.Column), placeholder(dbType, argIdx))
 		args = append(args, req.NewValue)
+		argIdx++
 	}
 
-	whereParts := make([]string, 0, len(req.PkColumns))
+	// WHERE clause
+	whereDisplay := make([]string, 0, len(req.PkColumns))
+	whereExec := make([]string, 0, len(req.PkColumns))
 	for col, val := range req.PkColumns {
-		whereParts = append(whereParts, fmt.Sprintf("%s = ?", quoteIdent(col)))
+		whereDisplay = append(whereDisplay, fmt.Sprintf("%s = %s", quoteIdent(col), formatValue(val)))
+		whereExec = append(whereExec, fmt.Sprintf("%s = %s", quoteIdent(col), placeholder(dbType, argIdx)))
 		args = append(args, val)
+		argIdx++
 	}
 
-	sql := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
-		quoteIdent(req.Table),
-		setCols,
-		strings.Join(whereParts, " AND "),
-	)
+	displaySQL = fmt.Sprintf("UPDATE %s SET %s WHERE %s",
+		quoteIdent(req.Table), setDisplay, strings.Join(whereDisplay, " AND "))
+	execSQL = fmt.Sprintf("UPDATE %s SET %s WHERE %s",
+		quoteIdent(req.Table), setExec, strings.Join(whereExec, " AND "))
 
-	return sql, args
+	return displaySQL, execSQL, args
 }
 
-// buildExecSQL creates an executable UPDATE with inlined values
-func buildExecSQL(req CellUpdateRequest) string {
-	var setCols string
-	if req.NewValue == nil {
-		setCols = fmt.Sprintf("%s = NULL", quoteIdent(req.Column))
-	} else {
-		setCols = fmt.Sprintf("%s = %s", quoteIdent(req.Column), formatValue(req.NewValue))
+// placeholder returns the placeholder for a given database type and position (1-indexed)
+func placeholder(dbType driver.DatabaseType, pos int) string {
+	switch dbType {
+	case driver.PostgreSQL, driver.Redshift:
+		return fmt.Sprintf("$%d", pos)
+	default:
+		return "?"
 	}
+}
 
-	whereParts := make([]string, 0, len(req.PkColumns))
-	for col, val := range req.PkColumns {
-		whereParts = append(whereParts, fmt.Sprintf("%s = %s", quoteIdent(col), formatValue(val)))
+// makePlaceholders creates a slice of placeholder strings for INSERT
+func makePlaceholders(dbType driver.DatabaseType, count int) []string {
+	result := make([]string, count)
+	for i := range count {
+		result[i] = placeholder(dbType, i+1)
 	}
-
-	return fmt.Sprintf("UPDATE %s SET %s WHERE %s",
-		quoteIdent(req.Table),
-		setCols,
-		strings.Join(whereParts, " AND "),
-	)
+	return result
 }
 
 // quoteIdent wraps an identifier in double quotes
@@ -345,7 +383,7 @@ func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
-// formatValue converts a Go value to a SQL literal
+// formatValue converts a Go value to a SQL literal (for display/history only — NOT for execution)
 func formatValue(v interface{}) string {
 	if v == nil {
 		return "NULL"

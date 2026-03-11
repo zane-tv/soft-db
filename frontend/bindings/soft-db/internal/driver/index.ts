@@ -5,6 +5,7 @@ export {
     ColumnInfo,
     ColumnMeta,
     ConnectionConfig,
+    DatabaseInfo,
     DatabaseType,
     FunctionInfo,
     QueryResult,

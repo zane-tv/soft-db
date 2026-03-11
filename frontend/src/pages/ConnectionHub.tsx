@@ -279,7 +279,9 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardPr
   const status = conn.status as 'connected' | 'idle' | 'offline'
   const hostDisplay = conn.type === DatabaseType.SQLite
     ? conn.filePath || conn.database
-    : `${conn.host}:${conn.port}`
+    : conn.uri
+      ? (() => { try { const u = new URL(conn.uri); return u.hostname || conn.uri; } catch { return conn.uri; } })()
+      : `${conn.host}:${conn.port}`
 
   return (
     <div

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"soft-db/internal/crypto"
 	"soft-db/internal/driver"
 
 	_ "modernc.org/sqlite"
@@ -60,11 +61,21 @@ func (s *Store) migrate() error {
 			username TEXT,
 			password TEXT,
 			file_path TEXT,
+			uri TEXT DEFAULT '',
 			ssl_mode TEXT DEFAULT '',
 			last_used TEXT,
 			created_at TEXT DEFAULT (datetime('now')),
 			updated_at TEXT DEFAULT (datetime('now'))
 		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Migration: add uri column for existing databases (ignore error if column already exists)
+	s.db.Exec(`ALTER TABLE connections ADD COLUMN uri TEXT DEFAULT ''`)
+
+	_, err = s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS query_history (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			connection_id TEXT NOT NULL,
@@ -100,20 +111,26 @@ func (s *Store) migrate() error {
 // ─── Connection CRUD ───
 
 func (s *Store) SaveConnection(cfg driver.ConnectionConfig) error {
-	_, err := s.db.Exec(`
-		INSERT INTO connections (id, name, type, host, port, database_name, username, password, file_path, ssl_mode)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	// Encrypt password before storing
+	encryptedPwd, err := crypto.Encrypt(cfg.Password)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt password: %w", err)
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO connections (id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, type=excluded.type, host=excluded.host, port=excluded.port,
 			database_name=excluded.database_name, username=excluded.username, password=excluded.password,
-			file_path=excluded.file_path, ssl_mode=excluded.ssl_mode, updated_at=datetime('now')`,
-		cfg.ID, cfg.Name, cfg.Type, cfg.Host, cfg.Port, cfg.Database, cfg.Username, cfg.Password, cfg.FilePath, cfg.SSLMode)
+			file_path=excluded.file_path, uri=excluded.uri, ssl_mode=excluded.ssl_mode, updated_at=datetime('now')`,
+		cfg.ID, cfg.Name, cfg.Type, cfg.Host, cfg.Port, cfg.Database, cfg.Username, encryptedPwd, cfg.FilePath, cfg.URI, cfg.SSLMode)
 	return err
 }
 
 func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, type, host, port, database_name, username, password, file_path, ssl_mode, last_used
+		SELECT id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode, last_used
 		FROM connections ORDER BY updated_at DESC`)
 	if err != nil {
 		return nil, err
@@ -125,11 +142,19 @@ func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 		var c driver.ConnectionConfig
 		var lastUsed sql.NullString
 		var filePath sql.NullString
-		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.Database, &c.Username, &c.Password, &filePath, &c.SSLMode, &lastUsed); err != nil {
+		var uri sql.NullString
+		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.Database, &c.Username, &c.Password, &filePath, &uri, &c.SSLMode, &lastUsed); err != nil {
 			return nil, err
+		}
+		// Decrypt password (backward-compatible with plaintext)
+		if decrypted, err := crypto.Decrypt(c.Password); err == nil {
+			c.Password = decrypted
 		}
 		if filePath.Valid {
 			c.FilePath = filePath.String
+		}
+		if uri.Valid {
+			c.URI = uri.String
 		}
 		if lastUsed.Valid {
 			c.LastUsed = lastUsed.String

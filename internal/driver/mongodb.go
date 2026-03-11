@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -22,11 +23,26 @@ func (d *MongoDriver) Connect(ctx context.Context, cfg ConnectionConfig) error {
 	d.config = cfg
 	d.dbName = cfg.Database
 
-	uri := fmt.Sprintf("mongodb://%s:%s@%s:%d/%s",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
-
-	if cfg.Username == "" {
-		uri = fmt.Sprintf("mongodb://%s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	// Build URI — prefer direct URI string, fall back to host/port fields
+	var uri string
+	if cfg.URI != "" {
+		uri = cfg.URI
+		// Parse database name from URI path if not explicitly set
+		if d.dbName == "" {
+			d.dbName = extractMongoDBFromURI(cfg.URI)
+		}
+	} else if cfg.Username != "" {
+		if cfg.Database != "" {
+			uri = fmt.Sprintf("mongodb://%s:%s@%s:%d/%s", cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
+		} else {
+			uri = fmt.Sprintf("mongodb://%s:%s@%s:%d", cfg.Username, cfg.Password, cfg.Host, cfg.Port)
+		}
+	} else {
+		if cfg.Database != "" {
+			uri = fmt.Sprintf("mongodb://%s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+		} else {
+			uri = fmt.Sprintf("mongodb://%s:%d", cfg.Host, cfg.Port)
+		}
 	}
 
 	clientOpts := options.Client().ApplyURI(uri)
@@ -274,17 +290,115 @@ func (d *MongoDriver) Functions(ctx context.Context) ([]FunctionInfo, error) {
 	return nil, nil
 }
 
+func (d *MongoDriver) ExecuteArgs(ctx context.Context, query string, args ...interface{}) (*QueryResult, error) {
+	// MongoDB doesn't use SQL parameterized queries — delegate to Execute
+	return d.Execute(ctx, query)
+}
+
 func (d *MongoDriver) Type() DatabaseType { return MongoDB }
 func (d *MongoDriver) IsConnected() bool  { return d.client != nil }
+
+// ─── MultiDatabaseDriver implementation ───
+
+func (d *MongoDriver) Databases(ctx context.Context) ([]DatabaseInfo, error) {
+	if d.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	systemDBs := map[string]bool{"admin": true, "local": true, "config": true}
+
+	names, err := d.client.ListDatabaseNames(ctx, bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list databases: %w", err)
+	}
+
+	var databases []DatabaseInfo
+	for _, name := range names {
+		if systemDBs[name] {
+			continue
+		}
+		databases = append(databases, DatabaseInfo{Name: name})
+	}
+	return databases, nil
+}
+
+func (d *MongoDriver) TablesInDB(ctx context.Context, database string) ([]TableInfo, error) {
+	if d.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	db := d.client.Database(database)
+	names, err := db.ListCollectionNames(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+
+	var tables []TableInfo
+	for _, name := range names {
+		tables = append(tables, TableInfo{Name: name, Type: "table"})
+	}
+	return tables, nil
+}
+
+func (d *MongoDriver) ColumnsInDB(ctx context.Context, database string, table string) ([]ColumnInfo, error) {
+	if d.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	coll := d.client.Database(database).Collection(table)
+	cursor, err := coll.Find(ctx, bson.M{}, options.Find().SetLimit(100))
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	fieldTypes := make(map[string]string)
+	fieldOrder := make(map[string]int)
+	order := 1
+
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		for k, v := range doc {
+			if _, exists := fieldTypes[k]; !exists {
+				fieldTypes[k] = inferBSONType(v)
+				fieldOrder[k] = order
+				order++
+			}
+		}
+	}
+
+	var columns []ColumnInfo
+	for name, typ := range fieldTypes {
+		columns = append(columns, ColumnInfo{
+			Name:       name,
+			Type:       typ,
+			Nullable:   true,
+			PrimaryKey: name == "_id",
+			OrdinalPos: fieldOrder[name],
+		})
+	}
+	return columns, nil
+}
+
+func (d *MongoDriver) SwitchDatabase(ctx context.Context, database string) error {
+	if d.client == nil {
+		return fmt.Errorf("not connected")
+	}
+	d.dbName = database
+	return nil
+}
 
 func inferBSONType(v interface{}) string {
 	switch v.(type) {
 	case string:
 		return "string"
 	case int32:
-		return "int32"
+		return "int"
 	case int64:
-		return "int64"
+		return "long"
 	case float64:
 		return "double"
 	case bool:
@@ -293,7 +407,109 @@ func inferBSONType(v interface{}) string {
 		return "object"
 	case bson.A:
 		return "array"
+	case bson.ObjectID:
+		return "objectId"
+	case bson.DateTime:
+		return "date"
+	case bson.Timestamp:
+		return "timestamp"
+	case bson.Decimal128:
+		return "decimal"
+	case bson.Binary:
+		return "binData"
+	case bson.Regex:
+		return "regex"
+	case nil:
+		return "null"
 	default:
 		return "mixed"
 	}
+}
+
+// extractMongoDBFromURI parses the database name from a MongoDB connection URI.
+// Returns empty string if no database is specified.
+func extractMongoDBFromURI(rawURI string) string {
+	// Replace mongodb+srv:// with https:// for url.Parse compatibility
+	normalized := rawURI
+	if strings.HasPrefix(normalized, "mongodb+srv://") {
+		normalized = "https://" + strings.TrimPrefix(normalized, "mongodb+srv://")
+	} else if strings.HasPrefix(normalized, "mongodb://") {
+		normalized = "https://" + strings.TrimPrefix(normalized, "mongodb://")
+	}
+
+	u, err := url.Parse(normalized)
+	if err != nil {
+		return ""
+	}
+
+	// Path is "/<database>" — trim leading slash
+	db := strings.TrimPrefix(u.Path, "/")
+	if db == "" {
+		return ""
+	}
+	return db
+}
+
+// GetCollectionValidator retrieves the JSON Schema validator for a MongoDB collection.
+// Returns an empty map if no validator is set.
+func (d *MongoDriver) GetCollectionValidator(ctx context.Context, database, collection string) (map[string]interface{}, error) {
+	if d.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	db := d.client.Database(database)
+	filter := bson.M{"name": collection}
+	cursor, err := db.ListCollections(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("listCollections: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if !cursor.Next(ctx) {
+		return nil, fmt.Errorf("collection %q not found", collection)
+	}
+
+	var result bson.M
+	if err := cursor.Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode collection info: %w", err)
+	}
+
+	// Extract validator.$jsonSchema from collection options
+	opts, ok := result["options"].(bson.M)
+	if !ok {
+		return map[string]interface{}{}, nil
+	}
+	validator, ok := opts["validator"].(bson.M)
+	if !ok {
+		return map[string]interface{}{}, nil
+	}
+	schema, ok := validator["$jsonSchema"].(bson.M)
+	if !ok {
+		return map[string]interface{}{}, nil
+	}
+
+	return schema, nil
+}
+
+// SetCollectionValidator applies a JSON Schema validator to a MongoDB collection.
+func (d *MongoDriver) SetCollectionValidator(ctx context.Context, database, collection string, schema map[string]interface{}) error {
+	if d.client == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	db := d.client.Database(database)
+	cmd := bson.D{
+		{Key: "collMod", Value: collection},
+		{Key: "validator", Value: bson.M{
+			"$jsonSchema": schema,
+		}},
+		{Key: "validationLevel", Value: "moderate"},
+		{Key: "validationAction", Value: "warn"},
+	}
+
+	var result bson.M
+	if err := db.RunCommand(ctx, cmd).Decode(&result); err != nil {
+		return fmt.Errorf("collMod: %w", err)
+	}
+	return nil
 }

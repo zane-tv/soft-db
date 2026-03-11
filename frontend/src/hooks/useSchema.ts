@@ -43,6 +43,50 @@ export function useFunctions(connectionId: string) {
   })
 }
 
+// ─── Multi-Database Schema ───
+export const multiDbKeys = {
+  hasMultiDB: (connId: string) => ['multidb', connId, 'has'] as const,
+  databases: (connId: string) => ['multidb', connId, 'databases'] as const,
+  tablesForDB: (connId: string, db: string) => ['multidb', connId, 'tables', db] as const,
+}
+
+export function useHasMultiDB(connectionId: string) {
+  return useQuery({
+    queryKey: multiDbKeys.hasMultiDB(connectionId),
+    queryFn: () => SchemaService.HasMultiDB(connectionId),
+    enabled: !!connectionId,
+    staleTime: Infinity,
+  })
+}
+
+export function useDatabases(connectionId: string) {
+  return useQuery({
+    queryKey: multiDbKeys.databases(connectionId),
+    queryFn: () => SchemaService.GetDatabases(connectionId),
+    enabled: !!connectionId,
+  })
+}
+
+export function useTablesForDB(connectionId: string, database: string) {
+  return useQuery({
+    queryKey: multiDbKeys.tablesForDB(connectionId, database),
+    queryFn: () => SchemaService.GetTablesForDB(connectionId, database),
+    enabled: !!connectionId && !!database,
+  })
+}
+
+export function useSwitchDatabase() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ connectionId, database }: { connectionId: string; database: string }) =>
+      SchemaService.SwitchDatabase(connectionId, database),
+    onSuccess: (_data, { connectionId }) => {
+      // Invalidate table/column caches for this connection
+      queryClient.invalidateQueries({ queryKey: schemaKeys.all(connectionId) })
+    },
+  })
+}
+
 // ─── Query Execution ───
 export function useExecuteQuery() {
   const queryClient = useQueryClient()
@@ -83,5 +127,42 @@ export function useSaveSnippet() {
 export function useDeleteSnippet() {
   return useMutation({
     mutationFn: (id: number) => QueryService.DeleteSnippet(id),
+  })
+}
+
+// ─── MongoDB Schema Validation ───
+
+export const mongoValidatorKeys = {
+  validator: (connId: string, db: string, collection: string) =>
+    ['mongoValidator', connId, db, collection] as const,
+}
+
+export function useMongoValidator(connectionId: string, database: string, collection: string) {
+  return useQuery({
+    queryKey: mongoValidatorKeys.validator(connectionId, database, collection),
+    queryFn: () => SchemaService.GetMongoValidator(connectionId, database, collection),
+    enabled: !!connectionId && !!database && !!collection,
+  })
+}
+
+export function useSetMongoValidator() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      connectionId,
+      database,
+      collection,
+      schema,
+    }: {
+      connectionId: string
+      database: string
+      collection: string
+      schema: Record<string, unknown>
+    }) => SchemaService.SetMongoValidator(connectionId, database, collection, schema),
+    onSuccess: (_data, { connectionId, database, collection }) => {
+      queryClient.invalidateQueries({
+        queryKey: mongoValidatorKeys.validator(connectionId, database, collection),
+      })
+    },
   })
 }

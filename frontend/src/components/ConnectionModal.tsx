@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 import { useSaveConnection, useTestConnection } from '@/hooks/useConnections'
 import { Dialogs } from '@wailsio/runtime'
@@ -42,7 +42,9 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
     password: '',
     filePath: '',
     sslMode: '',
+    uri: '',
   })
+  const [useURI, setUseURI] = useState(false)
 
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [testError, setTestError] = useState('')
@@ -60,7 +62,9 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         password: editConnection.password,
         filePath: editConnection.filePath || '',
         sslMode: editConnection.sslMode || '',
+        uri: editConnection.uri || '',
       })
+      setUseURI(!!editConnection.uri)
     } else {
       setForm({
         name: '',
@@ -72,7 +76,9 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         password: '',
         filePath: '',
         sslMode: '',
+        uri: '',
       })
+      setUseURI(false)
     }
     setTestResult('idle')
     setTestError('')
@@ -111,20 +117,22 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
   }, [updateField])
 
   const buildConfig = useCallback((): ConnectionConfig => {
+    const isURIMode = useURI && form.type === DatabaseType.MongoDB
     return new ConnectionConfig({
       id: editConnection?.id || '',
       name: form.name,
       type: form.type,
-      host: form.host,
-      port: parseInt(form.port, 10) || 0,
-      database: form.database,
-      username: form.username,
-      password: form.password,
+      host: isURIMode ? '' : form.host,
+      port: isURIMode ? 0 : (parseInt(form.port, 10) || 0),
+      database: isURIMode ? '' : form.database,
+      username: isURIMode ? '' : form.username,
+      password: isURIMode ? '' : form.password,
       filePath: form.filePath || undefined,
+      uri: isURIMode ? form.uri : undefined,
       sslMode: form.sslMode || undefined,
       status: 'offline',
     })
-  }, [form, editConnection])
+  }, [form, editConnection, useURI])
 
   const handleTest = useCallback(async () => {
     setTestResult('testing')
@@ -148,12 +156,23 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
   }, [saveMutation, buildConfig, onClose])
 
   const isSQLite = form.type === DatabaseType.SQLite
-  const canSave = form.name.trim() && (isSQLite ? form.filePath.trim() || form.database.trim() : form.host.trim())
+  const isMongo = form.type === DatabaseType.MongoDB
+  const canSave = form.name.trim() && (
+    isSQLite ? form.filePath.trim() || form.database.trim()
+    : (useURI && isMongo) ? form.uri.trim()
+    : form.host.trim()
+  )
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="connection-modal-title"
+      onKeyDown={(e: ReactKeyboardEvent) => { if (e.key === 'Escape') onClose() }}
+    >
       {/* Backdrop */}
       <div
         ref={overlayRef}
@@ -169,13 +188,14 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         {/* Header */}
         <div className="px-6 py-5 border-b border-border-subtle flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-text-main">
+            <h2 id="connection-modal-title" className="text-lg font-bold text-text-main">
               {editConnection ? 'Edit Connection' : 'New Connection'}
             </h2>
             <p className="text-sm text-text-muted mt-0.5">Configure your database connection details.</p>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="text-text-muted hover:text-text-main p-1.5 rounded-lg hover:bg-white/5 transition-colors duration-200"
           >
             <span className="material-symbols-outlined text-[22px]">close</span>
@@ -186,10 +206,11 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* Connection Name */}
           <div>
-            <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+            <label htmlFor="conn-name" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
               Connection Name
             </label>
             <input
+              id="conn-name"
               value={form.name}
               onChange={(e) => updateField('name', e.target.value)}
               className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all duration-200"
@@ -225,11 +246,12 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
           {/* Connection Fields */}
           {isSQLite ? (
             <div>
-              <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+              <label htmlFor="conn-filepath" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
                 Database File Path
               </label>
               <div className="flex gap-2">
                 <input
+                  id="conn-filepath"
                   value={form.filePath}
                   onChange={(e) => updateField('filePath', e.target.value)}
                   className="flex-1 bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
@@ -247,13 +269,63 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
             </div>
           ) : (
             <>
+              {/* MongoDB URI Toggle */}
+              {isMongo && (
+                <div className="flex items-center gap-3 p-2.5 rounded-lg bg-bg-hover/20 border border-border-subtle/30">
+                  <button
+                    type="button"
+                    onClick={() => setUseURI(false)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                      !useURI
+                        ? 'bg-primary text-white shadow-sm'
+                        : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">tune</span>
+                    Form Fields
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUseURI(true)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                      useURI
+                        ? 'bg-primary text-white shadow-sm'
+                        : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">link</span>
+                    Connection URL
+                  </button>
+                </div>
+              )}
+
+              {/* MongoDB URI Input */}
+              {isMongo && useURI ? (
+                <div>
+                  <label htmlFor="conn-uri" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                    Connection URL
+                  </label>
+                  <textarea
+                    id="conn-uri"
+                    value={form.uri}
+                    onChange={(e) => updateField('uri', e.target.value)}
+                    rows={3}
+                    className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200 resize-none"
+                    placeholder="mongodb+srv://user:password@cluster.mongodb.net/mydb?retryWrites=true&w=majority"
+                    spellCheck={false}
+                  />
+                  <p className="text-[10px] text-text-muted/40 mt-1">Paste your MongoDB connection string from Atlas or your server</p>
+                </div>
+              ) : (
+              <>
               {/* Host + Port */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                  <label htmlFor="conn-host" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
                     Host
                   </label>
                   <input
+                    id="conn-host"
                     value={form.host}
                     onChange={(e) => updateField('host', e.target.value)}
                     className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
@@ -261,10 +333,11 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                  <label htmlFor="conn-port" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
                     Port
                   </label>
                   <input
+                    id="conn-port"
                     value={form.port}
                     onChange={(e) => updateField('port', e.target.value)}
                     type="number"
@@ -275,24 +348,27 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
 
               {/* Database */}
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                  Database
+                <label htmlFor="conn-database" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                  Database <span className="text-text-muted/40 normal-case font-normal">(optional)</span>
                 </label>
                 <input
+                  id="conn-database"
                   value={form.database}
                   onChange={(e) => updateField('database', e.target.value)}
                   className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
                   placeholder="my_database"
                 />
+                <p className="text-[10px] text-text-muted/40 mt-1">Leave empty to browse all databases</p>
               </div>
 
               {/* Username + Password */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                  <label htmlFor="conn-username" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
                     Username
                   </label>
                   <input
+                    id="conn-username"
                     value={form.username}
                     onChange={(e) => updateField('username', e.target.value)}
                     className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
@@ -300,10 +376,11 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                  <label htmlFor="conn-password" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
                     Password
                   </label>
                   <input
+                    id="conn-password"
                     value={form.password}
                     onChange={(e) => updateField('password', e.target.value)}
                     type="password"
@@ -312,6 +389,8 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   />
                 </div>
               </div>
+              </>
+              )}
             </>
           )}
 

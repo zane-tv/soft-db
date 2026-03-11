@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useTables, useViews, useFunctions, useColumns, useExecuteQuery, useQueryHistory } from '@/hooks/useSchema'
+import { useTables, useViews, useFunctions, useColumns, useExecuteQuery, useQueryHistory, useSwitchDatabase } from '@/hooks/useSchema'
 import { useConnections } from '@/hooks/useConnections'
 import { ExplorerSidebar } from '@/components/ExplorerSidebar'
 import { EditorTabBar } from '@/components/EditorTabBar'
@@ -35,6 +35,7 @@ interface ExplorerState {
   tabs: QueryTab[]
   activeTabId: string
   selectedTable: string | null
+  selectedDatabase: string | null
   sidebarCollapsed: boolean
 }
 const explorerStateCache = new Map<string, ExplorerState>()
@@ -56,6 +57,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
   // active observer — this lets onSettled's refetchQueries trigger immediately
   // even when the Activity Log drawer is closed.
   useQueryHistory(connectionId)
+  const switchDbMutation = useSwitchDatabase()
   const { settings } = useSettingsContext()
 
   const conn = connections.find((c) => c.id === connectionId)
@@ -63,6 +65,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
   // ─── State (initialized from cache if available) ───
   const cached = explorerStateCache.get(connectionId)
   const [selectedTable, setSelectedTable] = useState<string | null>(cached?.selectedTable ?? null)
+  const [selectedDatabase, setSelectedDatabase] = useState<string | null>(cached?.selectedDatabase ?? null)
   const [tabs, setTabs] = useState<QueryTab[]>(cached?.tabs ?? DEFAULT_TABS)
   const [activeTabId, setActiveTabId] = useState(cached?.activeTabId ?? '1')
   const [isExecuting, setIsExecuting] = useState(false)
@@ -73,8 +76,8 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
 
   // ─── Sync state to cache on changes ───
   useEffect(() => {
-    explorerStateCache.set(connectionId, { tabs, activeTabId, selectedTable, sidebarCollapsed })
-  }, [connectionId, tabs, activeTabId, selectedTable, sidebarCollapsed])
+    explorerStateCache.set(connectionId, { tabs, activeTabId, selectedTable, selectedDatabase, sidebarCollapsed })
+  }, [connectionId, tabs, activeTabId, selectedTable, selectedDatabase, sidebarCollapsed])
 
   // ─── Resizable Pane ───
   const mainRef = useRef<HTMLElement>(null)
@@ -189,7 +192,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
     if (conn?.type === 'mongodb') {
       updateQuery(`{ "collection": "${tableName}", "action": "find", "limit": ${settings.defaultLimit} }`)
     } else {
-      updateQuery(`SELECT *\nFROM ${tableName}\nLIMIT ${settings.defaultLimit};`)
+      updateQuery(`SELECT *\nFROM "${tableName}"\nLIMIT ${settings.defaultLimit};`)
     }
   }, [updateQuery, settings.defaultLimit, conn?.type])
 
@@ -210,12 +213,17 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
         functions={functions as FunctionInfo[]}
         tablesLoading={tablesLoading}
         selectedTable={selectedTable}
+        selectedDatabase={selectedDatabase}
         collapsed={sidebarCollapsed}
         onTableClick={handleTableClick}
         onStructureOpen={setStructureTable}
         onNavigateBack={onNavigateBack || (() => navigate({ to: '/' }))}
         onSettingsOpen={() => setSettingsOpen(true)}
         onCreateTable={() => setStructureTable('__new__')}
+        onDatabaseSelect={(db) => {
+          setSelectedDatabase(db)
+          switchDbMutation.mutate({ connectionId, database: db })
+        }}
       />
 
       {/* Main Content */}
@@ -256,7 +264,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
                   {isExecuting ? 'sync' : 'play_arrow'}
                 </span>
                 <span className="font-medium text-sm">{isExecuting ? 'Running...' : 'Run Query'}</span>
-                <kbd className="bg-white/20 text-white/90 text-[10px] px-1.5 py-0.5 rounded ml-1 font-mono">⌘E</kbd>
+                <kbd className="bg-white/20 text-white/90 text-[10px] px-1.5 py-0.5 rounded ml-1 font-mono">{navigator.platform?.includes('Mac') ? '⌘E' : 'Ctrl+E'}</kbd>
               </button>
             </div>
           </div>
@@ -283,6 +291,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
         connectionId={connectionId}
         tableName={structureTable || ''}
         dbType={(conn?.type as string) || undefined}
+        database={selectedDatabase || undefined}
       />
 
       {/* Query History Drawer */}

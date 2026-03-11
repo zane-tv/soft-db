@@ -7,3 +7,6 @@ build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 mock-ui
 .agents
 softdb.exe
+.serena
+.agent
+dist

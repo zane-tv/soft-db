@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Window } from '@wailsio/runtime'
 
 export type ThemeId = 'dark' | 'light' | 'nord' | 'dracula'
 
@@ -36,10 +37,26 @@ export const THEMES: ThemeOption[] = [
   },
 ]
 
+// RGB values matching --color-bg-app in app.css for each theme
+const THEME_BG_RGB: Record<ThemeId, [number, number, number]> = {
+  dark:    [24, 24, 27],    // #18181B
+  light:   [241, 245, 249], // #F1F5F9
+  nord:    [46, 52, 64],    // #2E3440
+  dracula: [40, 42, 54],    // #282A36
+}
+
 const STORAGE_KEY = 'softdb-theme'
 
 function applyTheme(theme: ThemeId) {
   document.documentElement.setAttribute('data-theme', theme)
+
+  // Sync Wails native window background with theme
+  try {
+    const [r, g, b] = THEME_BG_RGB[theme]
+    Window.SetBackgroundColour(r, g, b, 255)
+  } catch {
+    // Not running in Wails runtime (e.g. browser dev mode)
+  }
 }
 
 function getInitialTheme(): ThemeId {

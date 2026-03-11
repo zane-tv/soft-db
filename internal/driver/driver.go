@@ -29,6 +29,7 @@ type ConnectionConfig struct {
 	Username string       `json:"username"`
 	Password string       `json:"password"`
 	FilePath string       `json:"filePath,omitempty"` // For SQLite
+	URI      string       `json:"uri,omitempty"`      // Direct connection string (MongoDB)
 	SSLMode  string       `json:"sslMode,omitempty"`
 	Status   string       `json:"status"` // connected, idle, offline
 	LastUsed string       `json:"lastUsed,omitempty"`
@@ -86,6 +87,8 @@ type Driver interface {
 	Ping(ctx context.Context) error
 	// Execute runs a query and returns results
 	Execute(ctx context.Context, query string) (*QueryResult, error)
+	// ExecuteArgs runs a parameterized query with args (for safe mutations)
+	ExecuteArgs(ctx context.Context, query string, args ...interface{}) (*QueryResult, error)
 	// Tables returns all tables in the database
 	Tables(ctx context.Context) ([]TableInfo, error)
 	// Columns returns columns for a given table
@@ -98,6 +101,37 @@ type Driver interface {
 	Type() DatabaseType
 	// IsConnected returns whether the driver has an active connection
 	IsConnected() bool
+}
+
+// DatabaseInfo describes a database on the server
+type DatabaseInfo struct {
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"sizeBytes,omitempty"`
+	Empty     bool   `json:"empty,omitempty"`
+}
+
+// MultiDatabaseDriver is an optional interface that drivers implement
+// to support browsing and switching between multiple databases on a server.
+// Use type assertion drv.(MultiDatabaseDriver) to check capability.
+type MultiDatabaseDriver interface {
+	// Databases returns all databases on the connected server
+	Databases(ctx context.Context) ([]DatabaseInfo, error)
+	// TablesInDB returns tables for a specific database
+	TablesInDB(ctx context.Context, database string) ([]TableInfo, error)
+	// ColumnsInDB returns columns for a table in a specific database
+	ColumnsInDB(ctx context.Context, database string, table string) ([]ColumnInfo, error)
+	// SwitchDatabase changes the active database for subsequent queries
+	SwitchDatabase(ctx context.Context, database string) error
+}
+
+// SchemaValidationDriver is an optional interface for drivers that support
+// schema validation (e.g. MongoDB JSON Schema Validation).
+// Use type assertion drv.(SchemaValidationDriver) to check capability.
+type SchemaValidationDriver interface {
+	// GetCollectionValidator retrieves the current JSON Schema validator
+	GetCollectionValidator(ctx context.Context, database, collection string) (map[string]interface{}, error)
+	// SetCollectionValidator applies a JSON Schema validator
+	SetCollectionValidator(ctx context.Context, database, collection string, schema map[string]interface{}) error
 }
 
 // NewDriver creates a new driver instance for the given database type

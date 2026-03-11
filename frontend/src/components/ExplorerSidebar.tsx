@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useColumns } from '@/hooks/useSchema'
+import { useColumns, useHasMultiDB, useDatabases, useTablesForDB } from '@/hooks/useSchema'
 
 // ─── Types ───
 interface ExplorerSidebarProps {
@@ -11,12 +11,14 @@ interface ExplorerSidebarProps {
   functions: { name: string }[]
   tablesLoading?: boolean
   selectedTable: string | null
+  selectedDatabase?: string | null
   collapsed: boolean
   onTableClick: (name: string) => void
   onStructureOpen: (name: string) => void
   onNavigateBack: () => void
   onSettingsOpen?: () => void
   onCreateTable?: () => void
+  onDatabaseSelect?: (database: string) => void
 }
 
 export function ExplorerSidebar({
@@ -28,13 +30,17 @@ export function ExplorerSidebar({
   functions,
   tablesLoading,
   selectedTable,
+  selectedDatabase,
   collapsed,
   onTableClick,
   onStructureOpen,
   onNavigateBack,
   onSettingsOpen,
   onCreateTable,
+  onDatabaseSelect,
 }: ExplorerSidebarProps) {
+  const { data: hasMultiDB } = useHasMultiDB(connectionId)
+
   return (
     <aside
       className={`${collapsed ? 'w-0' : 'w-[220px]'} flex-shrink-0 flex flex-col border-r border-border-subtle/30 bg-bg-app transition-all duration-300 overflow-hidden`}
@@ -61,30 +67,43 @@ export function ExplorerSidebar({
 
       {/* Object Tree */}
       <div className="flex-1 overflow-y-auto py-2 px-2 space-y-3">
-        <TreeSection label="Tables" icon="table_chart" count={tables.length} isLoading={tablesLoading} onAdd={onCreateTable}>
-          {tables.map((t) => (
-            <TableTreeItem
-              key={t.name}
-              name={t.name}
-              connectionId={connectionId}
-              active={selectedTable === t.name}
-              onClick={() => onTableClick(t.name)}
-              onSettings={() => onStructureOpen(t.name)}
-            />
-          ))}
-        </TreeSection>
+        {hasMultiDB ? (
+          <MultiDBTree
+            connectionId={connectionId}
+            selectedTable={selectedTable}
+            selectedDatabase={selectedDatabase || null}
+            onTableClick={onTableClick}
+            onStructureOpen={onStructureOpen}
+            onDatabaseSelect={onDatabaseSelect}
+          />
+        ) : (
+          <>
+            <TreeSection label="Tables" icon="table_chart" count={tables.length} isLoading={tablesLoading} onAdd={onCreateTable}>
+              {tables.map((t) => (
+                <TableTreeItem
+                  key={t.name}
+                  name={t.name}
+                  connectionId={connectionId}
+                  active={selectedTable === t.name}
+                  onClick={() => onTableClick(t.name)}
+                  onSettings={() => onStructureOpen(t.name)}
+                />
+              ))}
+            </TreeSection>
 
-        <TreeSection label="Views" icon="visibility" count={views.length}>
-          {views.map((v) => (
-            <TreeItem key={v} icon="visibility" label={v} onClick={() => onTableClick(v)} />
-          ))}
-        </TreeSection>
+            <TreeSection label="Views" icon="visibility" count={views.length}>
+              {views.map((v) => (
+                <TreeItem key={v} icon="visibility" label={v} onClick={() => onTableClick(v)} />
+              ))}
+            </TreeSection>
 
-        <TreeSection label="Functions" icon="functions" count={functions.length}>
-          {functions.map((f) => (
-            <TreeItem key={f.name} icon="functions" label={f.name} />
-          ))}
-        </TreeSection>
+            <TreeSection label="Functions" icon="functions" count={functions.length}>
+              {functions.map((f) => (
+                <TreeItem key={f.name} icon="functions" label={f.name} />
+              ))}
+            </TreeSection>
+          </>
+        )}
       </div>
 
       {/* Settings Footer */}
@@ -98,6 +117,131 @@ export function ExplorerSidebar({
         </button>
       </div>
     </aside>
+  )
+}
+
+// ─── MultiDBTree: 3-level tree (Connection → Database → Tables) ───
+function MultiDBTree({
+  connectionId,
+  selectedTable,
+  selectedDatabase,
+  onTableClick,
+  onStructureOpen,
+  onDatabaseSelect,
+}: {
+  connectionId: string
+  selectedTable: string | null
+  selectedDatabase: string | null
+  onTableClick: (name: string) => void
+  onStructureOpen: (name: string) => void
+  onDatabaseSelect?: (database: string) => void
+}) {
+  const { data: databases = [], isLoading } = useDatabases(connectionId)
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-3 text-[11px] text-text-muted/50">
+        <span className="material-symbols-outlined text-[14px] animate-spin">progress_activity</span>
+        Loading databases...
+      </div>
+    )
+  }
+
+  return (
+    <TreeSection label="Databases" icon="database" count={databases.length}>
+      {databases.map((db: { name: string }) => (
+        <DatabaseTreeItem
+          key={db.name}
+          name={db.name}
+          connectionId={connectionId}
+          active={selectedDatabase === db.name}
+          selectedTable={selectedTable}
+          onSelect={() => onDatabaseSelect?.(db.name)}
+          onTableClick={onTableClick}
+          onStructureOpen={onStructureOpen}
+        />
+      ))}
+    </TreeSection>
+  )
+}
+
+// ─── DatabaseTreeItem: Expandable database node ───
+function DatabaseTreeItem({
+  name,
+  connectionId,
+  active,
+  selectedTable,
+  onSelect,
+  onTableClick,
+  onStructureOpen,
+}: {
+  name: string
+  connectionId: string
+  active?: boolean
+  selectedTable: string | null
+  onSelect?: () => void
+  onTableClick: (name: string) => void
+  onStructureOpen: (name: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const { data: tables = [], isLoading } = useTablesForDB(connectionId, expanded ? name : '')
+
+  return (
+    <li>
+      <div
+        className={`w-full flex items-center gap-0.5 px-1 py-1.5 text-[12px] rounded-md border-l-2 transition-all duration-150 group ${
+          active
+            ? 'text-text-main bg-bg-hover border-primary'
+            : 'text-text-muted hover:text-text-main hover:bg-bg-hover/30 border-transparent'
+        }`}
+      >
+        {/* Expand arrow */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+          className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-bg-hover/50 transition-colors"
+        >
+          <span className={`material-symbols-outlined text-[14px] text-text-muted/50 transition-transform ${expanded ? '' : '-rotate-90'}`}>
+            expand_more
+          </span>
+        </button>
+
+        {/* Database name (clickable — selects this DB as active) */}
+        <button
+          onClick={() => { onSelect?.(); setExpanded(true) }}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
+          <span className={`material-symbols-outlined text-[15px] transition-colors ${active ? 'text-primary' : 'opacity-40 group-hover:opacity-70'}`}>
+            database
+          </span>
+          <span className="truncate">{name}</span>
+        </button>
+      </div>
+
+      {/* Expanded tables */}
+      {expanded && (
+        <ul className="ml-4 mt-0.5 mb-1 space-y-0.5 border-l border-border-subtle/30 pl-1">
+          {isLoading ? (
+            <li className="flex items-center gap-2 px-2 py-1.5 text-[11px] text-text-muted/50">
+              <span className="material-symbols-outlined text-[12px] animate-spin">progress_activity</span>
+              Loading...
+            </li>
+          ) : tables.length > 0 ? (
+            tables.map((t: { name: string }) => (
+              <TableTreeItem
+                key={t.name}
+                name={t.name}
+                connectionId={connectionId}
+                active={selectedTable === t.name}
+                onClick={() => onTableClick(t.name)}
+                onSettings={() => onStructureOpen(t.name)}
+              />
+            ))
+          ) : (
+            <li className="px-2 py-1.5 text-[11px] text-text-muted/40 italic">No tables</li>
+          )}
+        </ul>
+      )}
+    </li>
   )
 }
 

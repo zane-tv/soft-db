@@ -96,6 +96,11 @@ export class ConnectionConfig {
      * For SQLite
      */
     "filePath"?: string;
+
+    /**
+     * Direct connection string (MongoDB)
+     */
+    "uri"?: string;
     "sslMode"?: string;
 
     /**
@@ -143,6 +148,32 @@ export class ConnectionConfig {
     static createFrom($$source: any = {}): ConnectionConfig {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new ConnectionConfig($$parsedSource as Partial<ConnectionConfig>);
+    }
+}
+
+/**
+ * DatabaseInfo describes a database on the server
+ */
+export class DatabaseInfo {
+    "name": string;
+    "sizeBytes"?: number;
+    "empty"?: boolean;
+
+    /** Creates a new DatabaseInfo instance. */
+    constructor($$source: Partial<DatabaseInfo> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DatabaseInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DatabaseInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DatabaseInfo($$parsedSource as Partial<DatabaseInfo>);
     }
 }
 

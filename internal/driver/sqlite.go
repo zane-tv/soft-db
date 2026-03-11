@@ -98,6 +98,24 @@ func (d *SQLiteDriver) executeExec(ctx context.Context, query string, start time
 	}, nil
 }
 
+func (d *SQLiteDriver) ExecuteArgs(ctx context.Context, query string, args ...interface{}) (*QueryResult, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	start := time.Now()
+	result, err := d.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	affected, _ := result.RowsAffected()
+	return &QueryResult{
+		AffectedRows:  affected,
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
 func (d *SQLiteDriver) Tables(ctx context.Context) ([]TableInfo, error) {
 	if d.db == nil {
 		return nil, fmt.Errorf("not connected")

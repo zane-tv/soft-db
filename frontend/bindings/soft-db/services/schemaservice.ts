@@ -24,11 +24,38 @@ export function GetColumns(connectionID: string, table: string): $CancellablePro
 }
 
 /**
+ * GetColumnsForDB returns columns for a table in a specific database
+ */
+export function GetColumnsForDB(connectionID: string, database: string, table: string): $CancellablePromise<driver$0.ColumnInfo[]> {
+    return $Call.ByID(3177182225, connectionID, database, table).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * GetDatabases returns all databases for a multi-DB connection
+ */
+export function GetDatabases(connectionID: string): $CancellablePromise<driver$0.DatabaseInfo[]> {
+    return $Call.ByID(400339869, connectionID).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
+/**
  * GetFunctions returns functions for a connection
  */
 export function GetFunctions(connectionID: string): $CancellablePromise<driver$0.FunctionInfo[]> {
     return $Call.ByID(2253813954, connectionID).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
+    });
+}
+
+/**
+ * GetMongoValidator retrieves the JSON Schema validator for a MongoDB collection
+ */
+export function GetMongoValidator(connectionID: string, database: string, collection: string): $CancellablePromise<{ [_ in string]?: any }> {
+    return $Call.ByID(3905921943, connectionID, database, collection).then(($result: any) => {
+        return $$createType6($result);
     });
 }
 
@@ -37,7 +64,16 @@ export function GetFunctions(connectionID: string): $CancellablePromise<driver$0
  */
 export function GetTables(connectionID: string): $CancellablePromise<driver$0.TableInfo[]> {
     return $Call.ByID(2427864504, connectionID).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType8($result);
+    });
+}
+
+/**
+ * GetTablesForDB returns tables for a specific database
+ */
+export function GetTablesForDB(connectionID: string, database: string): $CancellablePromise<driver$0.TableInfo[]> {
+    return $Call.ByID(3543959041, connectionID, database).then(($result: any) => {
+        return $$createType8($result);
     });
 }
 
@@ -46,15 +82,39 @@ export function GetTables(connectionID: string): $CancellablePromise<driver$0.Ta
  */
 export function GetViews(connectionID: string): $CancellablePromise<string[]> {
     return $Call.ByID(2837470909, connectionID).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType9($result);
     });
+}
+
+/**
+ * HasMultiDB checks if the connection's driver supports multi-database browsing
+ */
+export function HasMultiDB(connectionID: string): $CancellablePromise<boolean> {
+    return $Call.ByID(1163912848, connectionID);
+}
+
+/**
+ * SetMongoValidator applies a JSON Schema validator to a MongoDB collection
+ */
+export function SetMongoValidator(connectionID: string, database: string, collection: string, schema: { [_ in string]?: any }): $CancellablePromise<void> {
+    return $Call.ByID(1129844451, connectionID, database, collection, schema);
+}
+
+/**
+ * SwitchDatabase changes the active database for a connection
+ */
+export function SwitchDatabase(connectionID: string, database: string): $CancellablePromise<void> {
+    return $Call.ByID(2907261986, connectionID, database);
 }
 
 // Private type creation functions
 const $$createType0 = driver$0.ColumnInfo.createFrom;
 const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = driver$0.FunctionInfo.createFrom;
+const $$createType2 = driver$0.DatabaseInfo.createFrom;
 const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = driver$0.TableInfo.createFrom;
+const $$createType4 = driver$0.FunctionInfo.createFrom;
 const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = $Create.Array($Create.Any);
+const $$createType6 = $Create.Map($Create.Any, $Create.Any);
+const $$createType7 = driver$0.TableInfo.createFrom;
+const $$createType8 = $Create.Array($$createType7);
+const $$createType9 = $Create.Array($Create.Any);

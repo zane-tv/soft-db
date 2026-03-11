@@ -24,7 +24,7 @@ func (d *MySQLDriver) Connect(ctx context.Context, cfg ConnectionConfig) error {
 		d.dbType = MySQL
 	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&multiStatements=true",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
 		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 
 	db, err := sql.Open("mysql", dsn)
@@ -88,6 +88,24 @@ func (d *MySQLDriver) executeQuery(ctx context.Context, query string, start time
 
 func (d *MySQLDriver) executeExec(ctx context.Context, query string, start time.Time) (*QueryResult, error) {
 	result, err := d.db.ExecContext(ctx, query)
+	if err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	affected, _ := result.RowsAffected()
+	return &QueryResult{
+		AffectedRows:  affected,
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MySQLDriver) ExecuteArgs(ctx context.Context, query string, args ...interface{}) (*QueryResult, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	start := time.Now()
+	result, err := d.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
 	}
@@ -223,3 +241,122 @@ func (d *MySQLDriver) Functions(ctx context.Context) ([]FunctionInfo, error) {
 
 func (d *MySQLDriver) Type() DatabaseType { return d.dbType }
 func (d *MySQLDriver) IsConnected() bool  { return d.db != nil }
+
+// ─── MultiDatabaseDriver implementation ───
+
+func (d *MySQLDriver) Databases(ctx context.Context) ([]DatabaseInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	systemDBs := map[string]bool{
+		"information_schema": true, "performance_schema": true,
+		"mysql": true, "sys": true,
+	}
+
+	rows, err := d.db.QueryContext(ctx, "SHOW DATABASES")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var databases []DatabaseInfo
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		if systemDBs[name] {
+			continue
+		}
+		databases = append(databases, DatabaseInfo{Name: name})
+	}
+	return databases, nil
+}
+
+func (d *MySQLDriver) TablesInDB(ctx context.Context, database string) ([]TableInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	query := `SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS
+		FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = ?
+		ORDER BY TABLE_NAME`
+
+	rows, err := d.db.QueryContext(ctx, query, database)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []TableInfo
+	for rows.Next() {
+		var t TableInfo
+		var tableType string
+		var rowCount sql.NullInt64
+		if err := rows.Scan(&t.Name, &tableType, &rowCount); err != nil {
+			return nil, err
+		}
+		if strings.Contains(tableType, "VIEW") {
+			t.Type = "view"
+		} else {
+			t.Type = "table"
+		}
+		if rowCount.Valid {
+			t.RowCount = rowCount.Int64
+		}
+		tables = append(tables, t)
+	}
+	return tables, nil
+}
+
+func (d *MySQLDriver) ColumnsInDB(ctx context.Context, database string, table string) ([]ColumnInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	query := `SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA, ORDINAL_POSITION
+		FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+		ORDER BY ORDINAL_POSITION`
+
+	rows, err := d.db.QueryContext(ctx, query, database, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var columns []ColumnInfo
+	for rows.Next() {
+		var c ColumnInfo
+		var nullable, key string
+		var defaultVal, extra sql.NullString
+		if err := rows.Scan(&c.Name, &c.Type, &nullable, &key, &defaultVal, &extra, &c.OrdinalPos); err != nil {
+			return nil, err
+		}
+		c.Nullable = nullable == "YES"
+		c.PrimaryKey = key == "PRI"
+		c.Unique = key == "UNI" || key == "PRI"
+		if defaultVal.Valid {
+			c.DefaultValue = defaultVal.String
+		}
+		if extra.Valid {
+			c.Extra = extra.String
+		}
+		columns = append(columns, c)
+	}
+	return columns, nil
+}
+
+func (d *MySQLDriver) SwitchDatabase(ctx context.Context, database string) error {
+	if d.db == nil {
+		return fmt.Errorf("not connected")
+	}
+	_, err := d.db.ExecContext(ctx, "USE "+database)
+	if err != nil {
+		return fmt.Errorf("failed to switch database: %w", err)
+	}
+	d.config.Database = database
+	return nil
+}
