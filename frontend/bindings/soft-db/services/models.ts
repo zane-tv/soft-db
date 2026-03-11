@@ -125,6 +125,34 @@ export class AppSettings {
 }
 
 /**
+ * AuthStatus represents the current authentication state
+ */
+export class AuthStatus {
+    /**
+     * "logged_in", "logged_out", "expired"
+     */
+    "status": string;
+    "email"?: string;
+
+    /** Creates a new AuthStatus instance. */
+    constructor($$source: Partial<AuthStatus> = {}) {
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AuthStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AuthStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AuthStatus($$parsedSource as Partial<AuthStatus>);
+    }
+}
+
+/**
  * BatchUpdateResult holds results for multiple cell updates
  */
 export class BatchUpdateResult {
@@ -300,6 +328,42 @@ export class InsertResult {
     static createFrom($$source: any = {}): InsertResult {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new InsertResult($$parsedSource as Partial<InsertResult>);
+    }
+}
+
+/**
+ * ModelInfo describes an available AI model
+ */
+export class ModelInfo {
+    "id": string;
+    "name": string;
+    "category": string;
+    "description": string;
+
+    /** Creates a new ModelInfo instance. */
+    constructor($$source: Partial<ModelInfo> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("category" in $$source)) {
+            this["category"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ModelInfo instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ModelInfo {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ModelInfo($$parsedSource as Partial<ModelInfo>);
     }
 }
 

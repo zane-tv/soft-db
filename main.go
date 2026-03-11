@@ -31,6 +31,8 @@ func main() {
 	queryService := services.NewQueryService(connService, settingsService, appStore)
 	schemaService := services.NewSchemaService(connService)
 	editService := services.NewEditService(connService, queryService, settingsService, appStore)
+	oauthService := services.NewOAuthService(appStore)
+	aiService := services.NewAIService(oauthService, schemaService, connService, appStore)
 
 	// Create Wails app
 	app := application.New(application.Options{
@@ -42,6 +44,8 @@ func main() {
 			application.NewService(schemaService),
 			application.NewService(settingsService),
 			application.NewService(editService),
+			application.NewService(oauthService),
+			application.NewService(aiService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -54,9 +58,14 @@ func main() {
 		},
 	})
 
+	// Inject app reference for event emission
+	oauthService.SetApp(app)
+	aiService.SetApp(app)
+
 	// Create main window
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "SoftDB",
+		Frameless:        true,
 		Width:            1400,
 		Height:           900,
 		MinWidth:         1024,
@@ -64,7 +73,7 @@ func main() {
 		BackgroundColour: application.NewRGB(24, 24, 27),
 		URL:              "/",
 		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 50,
+			InvisibleTitleBarHeight: 40,
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},

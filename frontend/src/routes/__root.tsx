@@ -4,6 +4,7 @@ import { useConnections, useConnect } from '@/hooks/useConnections'
 import { ConnectionHub } from '@/pages/ConnectionHub'
 import { WorkspacePage } from '@/pages/WorkspacePage'
 import { ConnectionPickerModal } from '@/components/ConnectionPickerModal'
+import { AppBar } from '@/components/AppBar'
 import type { ConnectionTab } from '@/components/ConnectionTabBar'
 
 export const Route = createRootRoute({
@@ -88,14 +89,17 @@ function RootLayout() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {/* Custom Title Bar */}
+      <AppBar />
+
       {/* Hub (shown when activeView === 'hub') */}
-      <div className={`h-full flex flex-col overflow-hidden ${activeView === 'hub' ? '' : 'hidden'}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden ${activeView === 'hub' ? '' : 'hidden'}`}>
         <ConnectionHub onConnect={handleConnect} />
       </div>
 
       {/* Workspace (shown when activeView === 'workspace', NEVER unmounted once created) */}
       {openTabs.length > 0 && (
-        <div className={`h-full flex flex-col overflow-hidden ${activeView === 'workspace' ? '' : 'hidden'}`}>
+        <div className={`flex-1 flex flex-col overflow-hidden ${activeView === 'workspace' ? '' : 'hidden'}`}>
           <WorkspacePage
             tabs={tabsWithNames}
             activeTabId={activeTabId}

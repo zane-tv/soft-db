@@ -10,6 +10,7 @@ import { ResizeHandle } from '@/components/ResizeHandle'
 import { StructureDesignerModal } from '@/components/StructureDesignerModal'
 import { SettingsModal } from '@/components/SettingsModal'
 import { QueryHistoryDrawer } from '@/components/QueryHistoryDrawer'
+import { AIChatPanel } from '@/components/AIChatPanel'
 import { useSettingsContext } from '@/hooks/useSettings'
 import { detectEditableTable } from '@/hooks/useEditableGrid'
 import * as EditService from '../../bindings/soft-db/services/editservice'
@@ -73,6 +74,7 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
   const [structureTable, setStructureTable] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
 
   // ─── Sync state to cache on changes ───
   useEffect(() => {
@@ -239,6 +241,8 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
             onTabAdd={addTab}
             onHistoryOpen={() => setHistoryOpen(true)}
             onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+            onAIToggle={() => setAiPanelOpen(!aiPanelOpen)}
+            aiPanelOpen={aiPanelOpen}
           />
 
           {/* Code Editor */}
@@ -283,6 +287,13 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
           onDataChange={handleExecute}
         />
       </main>
+
+      {/* AI Chat Panel (right sidebar) */}
+      <AIChatPanel
+        connectionId={connectionId}
+        visible={aiPanelOpen}
+        onClose={() => setAiPanelOpen(false)}
+      />
 
       {/* Structure Designer Modal */}
       <StructureDesignerModal

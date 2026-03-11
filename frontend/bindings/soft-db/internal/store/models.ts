@@ -5,6 +5,51 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+/**
+ * ChatMessage represents a single AI chat message
+ */
+export class ChatMessage {
+    "id": number;
+    "connectionId": string;
+
+    /**
+     * "user" | "assistant"
+     */
+    "role": string;
+    "content": string;
+    "model"?: string;
+    "createdAt": string;
+
+    /** Creates a new ChatMessage instance. */
+    constructor($$source: Partial<ChatMessage> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("connectionId" in $$source)) {
+            this["connectionId"] = "";
+        }
+        if (!("role" in $$source)) {
+            this["role"] = "";
+        }
+        if (!("content" in $$source)) {
+            this["content"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            this["createdAt"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ChatMessage instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ChatMessage {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ChatMessage($$parsedSource as Partial<ChatMessage>);
+    }
+}
+
 export class HistoryEntry {
     "id": number;
     "connectionId": string;

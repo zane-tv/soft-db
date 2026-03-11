@@ -105,6 +105,33 @@ func (s *Store) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_history_created ON query_history(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_snippets_conn ON snippets(connection_id);
 	`)
+	if err != nil {
+		return err
+	}
+
+	// AI Chatbox tables
+	_, err = s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS oauth_tokens (
+			id INTEGER PRIMARY KEY DEFAULT 1,
+			access_token TEXT NOT NULL,
+			refresh_token TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			provider TEXT DEFAULT 'openai',
+			updated_at TEXT DEFAULT (datetime('now')),
+			UNIQUE(id)
+		);
+		CREATE TABLE IF NOT EXISTS chat_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			connection_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			model TEXT DEFAULT '',
+			created_at TEXT DEFAULT (datetime('now')),
+			FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS idx_chat_conn ON chat_history(connection_id);
+		CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at);
+	`)
 	return err
 }
 
@@ -292,4 +319,141 @@ func (s *Store) Close() error {
 		return s.db.Close()
 	}
 	return nil
+}
+
+// ─── OAuth Tokens ───
+
+// OAuthTokens holds encrypted OAuth credentials
+type OAuthTokens struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	ExpiresAt    string `json:"expiresAt"`
+	Provider     string `json:"provider"`
+}
+
+// SaveOAuthTokens encrypts and stores OAuth tokens (single row, upsert)
+func (s *Store) SaveOAuthTokens(tokens OAuthTokens) error {
+	encAccess, err := crypto.Encrypt(tokens.AccessToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt access token: %w", err)
+	}
+	encRefresh, err := crypto.Encrypt(tokens.RefreshToken)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt refresh token: %w", err)
+	}
+
+	provider := tokens.Provider
+	if provider == "" {
+		provider = "openai"
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO oauth_tokens (id, access_token, refresh_token, expires_at, provider, updated_at)
+		VALUES (1, ?, ?, ?, ?, datetime('now'))
+		ON CONFLICT(id) DO UPDATE SET
+			access_token=excluded.access_token, refresh_token=excluded.refresh_token,
+			expires_at=excluded.expires_at, provider=excluded.provider, updated_at=datetime('now')`,
+		encAccess, encRefresh, tokens.ExpiresAt, provider)
+	return err
+}
+
+// LoadOAuthTokens retrieves and decrypts stored OAuth tokens
+func (s *Store) LoadOAuthTokens() (OAuthTokens, error) {
+	var tokens OAuthTokens
+	err := s.db.QueryRow(`
+		SELECT access_token, refresh_token, expires_at, COALESCE(provider, 'openai')
+		FROM oauth_tokens WHERE id = 1`).Scan(
+		&tokens.AccessToken, &tokens.RefreshToken, &tokens.ExpiresAt, &tokens.Provider)
+	if err != nil {
+		return tokens, err
+	}
+
+	// Decrypt tokens
+	if decrypted, err := crypto.Decrypt(tokens.AccessToken); err == nil {
+		tokens.AccessToken = decrypted
+	}
+	if decrypted, err := crypto.Decrypt(tokens.RefreshToken); err == nil {
+		tokens.RefreshToken = decrypted
+	}
+
+	return tokens, nil
+}
+
+// DeleteOAuthTokens removes all stored OAuth tokens
+func (s *Store) DeleteOAuthTokens() error {
+	_, err := s.db.Exec(`DELETE FROM oauth_tokens WHERE id = 1`)
+	return err
+}
+
+// ─── Chat History ───
+
+// ChatMessage represents a single AI chat message
+type ChatMessage struct {
+	ID           int    `json:"id"`
+	ConnectionID string `json:"connectionId"`
+	Role         string `json:"role"` // "user" | "assistant"
+	Content      string `json:"content"`
+	Model        string `json:"model,omitempty"`
+	CreatedAt    string `json:"createdAt"`
+}
+
+// AddChatMessage saves a chat message to history
+func (s *Store) AddChatMessage(msg ChatMessage) error {
+	_, err := s.db.Exec(`
+		INSERT INTO chat_history (connection_id, role, content, model)
+		VALUES (?, ?, ?, ?)`,
+		msg.ConnectionID, msg.Role, msg.Content, msg.Model)
+	return err
+}
+
+// ListChatMessages retrieves chat history for a connection (ordered oldest first)
+func (s *Store) ListChatMessages(connectionID string, limit int) ([]ChatMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`
+		SELECT id, connection_id, role, content, COALESCE(model, ''), created_at
+		FROM chat_history WHERE connection_id = ?
+		ORDER BY created_at ASC LIMIT ?`, connectionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []ChatMessage
+	for rows.Next() {
+		var m ChatMessage
+		if err := rows.Scan(&m.ID, &m.ConnectionID, &m.Role, &m.Content, &m.Model, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+	}
+	return messages, nil
+}
+
+// ClearChatMessages deletes all chat history for a connection
+func (s *Store) ClearChatMessages(connectionID string) error {
+	_, err := s.db.Exec(`DELETE FROM chat_history WHERE connection_id = ?`, connectionID)
+	return err
+}
+
+// ─── Generic Settings Helpers ───
+
+// GetSetting retrieves a setting value by key
+func (s *Store) GetSetting(key string) (string, error) {
+	var value string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	if err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+// SetSetting stores a key-value setting (upsert)
+func (s *Store) SetSetting(key, value string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+		key, value)
+	return err
 }
