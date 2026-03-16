@@ -7,31 +7,93 @@ on:
 
 permissions:
   contents: write
+  id-token: write # Required for Sigstore keyless signing
 
 jobs:
-  build:
+  build-windows:
+    runs-on: windows-latest
+    name: Build Windows Installer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          bun install
+
+      - name: Build & Create NSIS Installer
+        run: wails3 task windows:create:nsis:installer
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoftDB-windows-amd64
+          path: bin/*-installer.exe
+
+  build-macos:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            platform: linux
-            arch: amd64
-            ext: ''
-          - os: macos-latest
-            platform: darwin
-            arch: amd64
-            ext: ''
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
-            ext: ''
-          - os: windows-latest
-            platform: windows
-            arch: amd64
-            ext: '.exe'
+          - arch: amd64
+          - arch: arm64
+    runs-on: macos-latest
+    name: Build macOS ${{ matrix.arch }}
 
-    runs-on: ${{ matrix.os }}
-    name: Build ${{ matrix.platform }}-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          bun install
+
+      - name: Build & Package .app bundle
+        run: wails3 task darwin:package -- ARCH=${{ matrix.arch }}
+        env:
+          GOARCH: ${{ matrix.arch }}
+
+      - name: Create tar.gz
+        run: |
+          cd bin
+          tar -czf SoftDB-darwin-${{ matrix.arch }}.tar.gz SoftDB.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoftDB-darwin-${{ matrix.arch }}
+          path: bin/SoftDB-darwin-${{ matrix.arch }}.tar.gz
+
+  build-linux:
+    runs-on: ubuntu-latest
+    name: Build Linux Packages
 
     steps:
       - uses: actions/checkout@v4
@@ -49,10 +111,9 @@ jobs:
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
       - name: Install Linux deps
-        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libfuse2
 
       - name: Install frontend deps
         run: |
@@ -61,34 +122,40 @@ jobs:
 
       - name: Build
         env:
-          GOOS: ${{ matrix.platform }}
-          GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 1
-        run: wails3 build
+        run: wails3 task linux:build
 
-      - name: Package artifact
+      - name: Create AppImage
+        run: wails3 task linux:create:appimage
+        continue-on-error: true
+
+      - name: Create DEB package
+        run: wails3 task linux:create:deb
+        continue-on-error: true
+
+      - name: Package fallback tar.gz
         run: |
-          mkdir -p dist
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            cp bin/SoftDB${{ matrix.ext }} dist/SoftDB-${{ matrix.platform }}-${{ matrix.arch }}${{ matrix.ext }}
-          elif [ "${{ matrix.platform }}" = "darwin" ]; then
-            cd bin
-            tar -czf ../dist/SoftDB-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz SoftDB.app 2>/dev/null || tar -czf ../dist/SoftDB-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz SoftDB
-          else
-            tar -czf dist/SoftDB-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz -C bin SoftDB
+          if [ ! -f bin/*.AppImage ] && [ ! -f bin/*.deb ]; then
+            tar -czf bin/SoftDB-linux-amd64.tar.gz -C bin SoftDB
           fi
         shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SoftDB-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/*
+          name: SoftDB-linux-amd64
+          path: |
+            bin/*.AppImage
+            bin/*.deb
+            bin/*.tar.gz
 
   release:
-    needs: build
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
-    name: Create Release
+    name: Sign & Release
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -98,10 +165,34 @@ jobs:
         with:
           path: artifacts
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+
+      - name: Generate checksums
+        working-directory: release-files
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Sign all release files with Sigstore
+        working-directory: release-files
+        run: |
+          for file in *; do
+            case "$file" in
+              *.bundle) continue ;;
+            esac
+            echo "Signing $file..."
+            cosign sign-blob --yes "$file" \
+              --bundle "${file}.bundle"
+          done
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: artifacts/**/*
+          files: release-files/*
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
