@@ -13,6 +13,7 @@
   <a href="https://github.com/zane-tv/soft-db/releases"><img src="https://img.shields.io/github/v/release/zane-tv/soft-db?style=flat-square&color=blue" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/zane-tv/soft-db?style=flat-square" alt="License" /></a>
   <a href="https://github.com/zane-tv/soft-db/releases"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform" /></a>
+  <a href="#-install-via-homebrew-macos"><img src="https://img.shields.io/badge/Homebrew-available-FBB040?style=flat-square&logo=homebrew&logoColor=white" alt="Homebrew" /></a>
 </p>
 
 ---
@@ -63,6 +64,13 @@ Download the latest release for your platform from the [Releases page](https://g
 | **macOS** | `SoftDB-darwin-arm64.dmg` | DMG installer (Apple Silicon, Intel via Rosetta 2) |
 | **Linux** | `SoftDB-linux-amd64.AppImage` | Portable — `chmod +x` and run |
 | **Linux (Debian/Ubuntu)** | `SoftDB-linux-amd64.deb` | `sudo dpkg -i SoftDB-linux-amd64.deb` |
+
+### 🍺 Install via Homebrew (macOS)
+
+```bash
+brew tap zane-tv/softdb https://github.com/zane-tv/soft-db --force-auto-update
+brew install --cask softdb
+```
 
 ### Verify Downloads
 
