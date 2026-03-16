@@ -60,8 +60,7 @@ Download the latest release for your platform from the [Releases page](https://g
 | Platform | Download | Notes |
 |----------|----------|-------|
 | **Windows** | `SoftDB-amd64-installer.exe` | NSIS installer with shortcuts & uninstaller |
-| **macOS (Apple Silicon)** | `SoftDB-darwin-arm64.dmg` | DMG installer — open and drag to Applications |
-| **macOS (Intel)** | `SoftDB-darwin-amd64.dmg` | DMG installer |
+| **macOS** | `SoftDB-darwin-arm64.dmg` | DMG installer (Apple Silicon, Intel via Rosetta 2) |
 | **Linux** | `SoftDB-linux-amd64.AppImage` | Portable — `chmod +x` and run |
 | **Linux (Debian/Ubuntu)** | `SoftDB-linux-amd64.deb` | `sudo dpkg -i SoftDB-linux-amd64.deb` |
 
