@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import path from 'path'
 
+const WAILS_BACKEND_PORT = 8080
+
 export default defineConfig({
   plugins: [
     TanStackRouterVite({
@@ -21,6 +23,18 @@ export default defineConfig({
   server: {
     hmr: {
       protocol: 'ws',
+    },
+    proxy: {
+      // Proxy Wails runtime calls to Go backend (server mode)
+      '/wails': {
+        target: `http://localhost:${WAILS_BACKEND_PORT}`,
+        changeOrigin: true,
+        ws: true,
+      },
+      '/health': {
+        target: `http://localhost:${WAILS_BACKEND_PORT}`,
+        changeOrigin: true,
+      },
     },
   },
 })

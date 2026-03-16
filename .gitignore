@@ -12,3 +12,6 @@ softdb.exe
 dist
 docs/plans
 ./dev.sh
+vendor/
+frontend/bindings
+frontend/src/routeTree.gen.ts
