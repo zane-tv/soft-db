@@ -2,6 +2,46 @@ import React from 'react'
 import { useSettingsContext } from '@/hooks/useSettings'
 import { EditableCell } from './EditableCell'
 
+// ─── Date formatting helper ───
+const DATE_TYPES = /date|time|timestamp/i
+const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}(T|\s)\d{2}:\d{2}/
+
+function formatCellValue(val: string, columnType: string, dateFormat: string): string {
+  if (dateFormat === 'iso') return val
+  // Only format if column type hints at date or value looks like ISO date
+  if (!DATE_TYPES.test(columnType) && !ISO_PATTERN.test(val)) return val
+
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return val
+
+  switch (dateFormat) {
+    case 'us': {
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+      return `${mm}/${dd}/${d.getFullYear()} ${time}`
+    }
+    case 'eu': {
+      const dd = String(d.getDate()).padStart(2, '0')
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      return `${dd}/${mm}/${d.getFullYear()} ${time}`
+    }
+    case 'relative': {
+      const now = Date.now()
+      const diffMs = now - d.getTime()
+      const absDiff = Math.abs(diffMs)
+      if (absDiff < 60_000) return 'just now'
+      if (absDiff < 3_600_000) return `${Math.floor(absDiff / 60_000)}m ago`
+      if (absDiff < 86_400_000) return `${Math.floor(absDiff / 3_600_000)}h ago`
+      if (absDiff < 2_592_000_000) return `${Math.floor(absDiff / 86_400_000)}d ago`
+      return `${Math.floor(absDiff / 2_592_000_000)}mo ago`
+    }
+    default:
+      return val
+  }
+}
+
 // ─── Types ───
 interface VirtualCellProps {
   rowIndex: number
@@ -74,7 +114,9 @@ export const VirtualCell = React.memo(function VirtualCell({
   } else if (typeof val === 'object') {
     content = JSON.stringify(val)
   } else {
-    content = String(val)
+    // Format dates if dateFormat setting is not 'iso'
+    const strVal = String(val)
+    content = formatCellValue(strVal, columnType, settings.dateFormat)
   }
 
   return (

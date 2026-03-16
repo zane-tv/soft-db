@@ -1,4 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
+import { useSettings } from '@/hooks/useSettings'
+import { useTranslation } from '@/lib/i18n'
 import {
   useConnections,
   useDeleteConnection,
@@ -35,6 +37,8 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
 
   const { data: connections = [], isLoading } = useConnections()
   const { isLoading: isPinging } = usePingAll()
+  const { data: settingsData } = useSettings()
+  const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
   const connectMutation = useConnect()
   const disconnectMutation = useDisconnect()
   const deleteMutation = useDeleteConnection()
@@ -112,7 +116,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
           </div>
           <input
             className="block w-full rounded-lg border-0 py-3 pl-10 pr-12 text-sm text-text-main placeholder:text-text-muted glass-panel focus:ring-2 focus:ring-primary focus:bg-bg-card transition-all duration-300 outline-none"
-            placeholder="Search connections..."
+            placeholder={t('hub.searchPlaceholder')}
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -131,15 +135,15 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
           {/* Grid Actions */}
           <div className="flex items-end justify-between mb-8 animate-fade-in" style={{ animationDelay: '0.15s' }}>
             <div>
-              <h2 className="text-2xl font-bold text-text-main tracking-tight">Connections</h2>
+              <h2 className="text-2xl font-bold text-text-main tracking-tight">{t('hub.connections')}</h2>
               <p className="text-text-muted text-sm mt-1">
                 {isLoading
-                  ? 'Loading...'
+                  ? t('hub.loading')
                   : isPinging
-                    ? `Checking ${connections.length} connection${connections.length > 1 ? 's' : ''}...`
+                    ? `${t('hub.checking')} ${connections.length} ${connections.length > 1 ? t('hub.connections.suffixPlural') : t('hub.connections.suffix')}...`
                     : connections.length === 0
-                      ? 'No saved connections yet.'
-                      : `${connections.length} database${connections.length > 1 ? 's' : ''} configured.`}
+                      ? t('hub.noSaved')
+                      : `${connections.length} ${connections.length > 1 ? t('hub.databases') : t('hub.database')} ${t('hub.configured')}`}
               </p>
             </div>
             <button
@@ -147,7 +151,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
               className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 active:scale-[0.97]"
             >
               <span className="material-symbols-outlined text-[18px]">add</span>
-              New Connection
+              {t('hub.newConnection')}
             </button>
           </div>
 
@@ -179,7 +183,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
                 </span>
               </div>
               <span className="text-sm font-medium text-text-muted group-hover:text-text-main transition-colors duration-300">
-                Connect New Database
+                {t('hub.connectNewDb')}
               </span>
             </div>
           </div>
@@ -188,16 +192,16 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
           {!isLoading && connections.length === 0 && (
             <div className="text-center py-20 animate-fade-in">
               <span className="material-symbols-outlined text-[64px] text-text-muted/15 mb-4 block">dns</span>
-              <h3 className="text-lg font-semibold text-text-main mb-2">No connections yet</h3>
+              <h3 className="text-lg font-semibold text-text-main mb-2">{t('hub.noConnections')}</h3>
               <p className="text-text-muted text-sm mb-6">
-                Add your first database connection to get started.
+                {t('hub.addFirstConnection')}
               </p>
               <button
                 onClick={openNewModal}
                 className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200"
               >
                 <span className="material-symbols-outlined text-[18px]">add</span>
-                Add Connection
+                {t('hub.addConnection')}
               </button>
             </div>
           )}
@@ -206,7 +210,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
 
       {/* Version */}
       <div className="fixed bottom-4 right-6 text-xs text-text-muted/30 font-mono pointer-events-none select-none z-0">
-        v0.1.0-alpha
+        v1.0.2
       </div>
 
       {/* Click-away to close context menu */}
@@ -223,13 +227,13 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
                 style={{ left: contextMenu.x, top: contextMenu.y }}
               >
                 {status === 'connected' ? (
-                  <MenuItem icon="link_off" label="Disconnect" onClick={() => handleContextAction('disconnect', conn)} />
+                  <MenuItem icon="link_off" label={t('hub.disconnect')} onClick={() => handleContextAction('disconnect', conn)} />
                 ) : (
-                  <MenuItem icon="link" label="Connect" onClick={() => handleContextAction('connect', conn)} />
+                  <MenuItem icon="link" label={t('hub.connect')} onClick={() => handleContextAction('connect', conn)} />
                 )}
-                <MenuItem icon="edit" label="Edit" onClick={() => handleContextAction('edit', conn)} />
+                <MenuItem icon="edit" label={t('hub.edit')} onClick={() => handleContextAction('edit', conn)} />
                 <div className="h-px bg-border-subtle mx-2 my-1" />
-                <MenuItem icon="delete" label="Delete" onClick={() => handleContextAction('delete', conn)} danger />
+                <MenuItem icon="delete" label={t('hub.delete')} onClick={() => handleContextAction('delete', conn)} danger />
               </div>
             )
           })()}
@@ -249,10 +253,10 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
       {/* Delete Confirmation */}
       <ConfirmDialog
         open={!!deletingConn}
-        title="Delete Connection"
-        message={`Are you sure you want to delete "${deletingConn?.name}"? This will also remove all query history for this connection.`}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title={t('hub.deleteConnection')}
+        message={`${t('hub.deleteMessage')} "${deletingConn?.name}"? ${t('hub.deleteWarning')}`}
+        confirmLabel={t('hub.delete')}
+        cancelLabel={t('hub.cancel')}
         danger
         icon="delete"
         onConfirm={() => {
@@ -280,6 +284,8 @@ interface ConnectionCardProps {
 }
 
 function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardProps) {
+  const { data: settingsData } = useSettings()
+  const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
   const status = conn.status as 'connected' | 'idle' | 'offline'
   const hostDisplay = conn.type === DatabaseType.SQLite
     ? conn.filePath || conn.database
@@ -334,12 +340,12 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardPr
           )}
           <span className={`text-xs font-medium ${status === 'connected' ? 'text-emerald-500' : 'text-text-muted'}`}>
             {status === 'connected'
-              ? 'Connected'
+              ? t('connection.status.connected')
               : status === 'offline'
-                ? 'Offline'
+                ? t('connection.status.offline')
                 : conn.lastUsed
-                  ? `Idle — last used ${conn.lastUsed}`
-                  : 'Idle'}
+                  ? `${t('hub.idle')} — ${t('hub.lastUsed')} ${conn.lastUsed}`
+                  : t('connection.status.idle')}
           </span>
         </div>
 

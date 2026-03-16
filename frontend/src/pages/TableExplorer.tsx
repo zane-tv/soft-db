@@ -10,6 +10,7 @@ import { StructureDesignerModal } from '@/components/StructureDesignerModal'
 import { SettingsModal } from '@/components/SettingsModal'
 import { QueryHistoryDrawer } from '@/components/QueryHistoryDrawer'
 import { AIChatPanel } from '@/components/AIChatPanel'
+import { ConfirmModal } from '@/components/ConfirmModal'
 import { useSettingsContext } from '@/hooks/useSettings'
 import { detectEditableTable } from '@/hooks/useEditableGrid'
 import * as EditService from '../../bindings/soft-db/services/editservice'
@@ -46,9 +47,6 @@ interface ExplorerState {
 }
 const explorerStateCache = new Map<string, ExplorerState>()
 
-const DEFAULT_TABS: QueryTab[] = [
-  { id: '1', title: 'Query 1.sql', query: '', result: null, lastExecutedQuery: '', pkColumns: [] },
-]
 
 export function TableExplorer({ connectionId }: TableExplorerProps) {
 
@@ -66,12 +64,15 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const { settings } = useSettingsContext()
 
   const conn = connections.find((c) => c.id === connectionId)
+  const fileExt = conn?.type === 'mongodb' ? 'json' : 'sql'
 
   // ─── State (initialized from cache if available) ───
   const cached = explorerStateCache.get(connectionId)
   const [selectedTable, setSelectedTable] = useState<string | null>(cached?.selectedTable ?? null)
   const [selectedDatabase, setSelectedDatabase] = useState<string | null>(cached?.selectedDatabase ?? null)
-  const [tabs, setTabs] = useState<QueryTab[]>(cached?.tabs ?? DEFAULT_TABS)
+  const [tabs, setTabs] = useState<QueryTab[]>(cached?.tabs ?? [
+    { id: '1', title: `Query 1.${fileExt}`, query: '', result: null, lastExecutedQuery: '', pkColumns: [] },
+  ])
   const [activeTabId, setActiveTabId] = useState(cached?.activeTabId ?? '1')
   const [isExecuting, setIsExecuting] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(cached?.sidebarCollapsed ?? false)
@@ -80,6 +81,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
   const [aiPrefill, setAiPrefill] = useState('')
+  const [confirmQuery, setConfirmQuery] = useState<{ query: string; message: string } | null>(null)
 
   // ─── Sync state to cache on changes ───
   useEffect(() => {
@@ -111,13 +113,22 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const { data: columnInfos = [] } = useColumns(connectionId, columnsTable)
 
   // ─── Query Execution ───
-  const handleExecute = useCallback(async () => {
-    if (!activeTab?.query.trim() || isExecuting) return
+  // Core execute function (no confirm check)
+  const doExecuteQuery = useCallback(async (queryToRun: string) => {
     setIsExecuting(true)
+    // ── Auto-add LIMIT to SELECT queries ──
+    let finalQuery = queryToRun
+    if (settings.autoLimit && conn?.type !== 'mongodb') {
+      const isSelect = /^\s*select\b/i.test(finalQuery)
+      const hasLimit = /\blimit\b/i.test(finalQuery)
+      if (isSelect && !hasLimit) {
+        finalQuery = finalQuery.replace(/;?\s*$/, ` LIMIT ${settings.defaultLimit};`)
+      }
+    }
     try {
       const result = await executeMutation.mutateAsync({
         connectionId,
-        query: activeTab.query,
+        query: finalQuery,
       })
       if (result) {
         // Detect editable table and fetch PK columns
@@ -160,7 +171,33 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     } finally {
       setIsExecuting(false)
     }
-  }, [activeTab, activeTabId, connectionId, executeMutation, isExecuting])
+  }, [activeTabId, connectionId, executeMutation, settings, conn])
+
+  // Entry point with confirm check
+  const handleExecute = useCallback(async () => {
+    if (!activeTab?.query.trim() || isExecuting) return
+    const queryText = activeTab.query.trim()
+
+    // ── Confirm dangerous queries (DROP, TRUNCATE, ALTER) ──
+    if (settings.confirmDangerous) {
+      const dangerousPattern = /^\s*(drop|truncate|alter)\b/i
+      if (dangerousPattern.test(queryText)) {
+        setConfirmQuery({
+          query: queryText,
+          message: queryText.substring(0, 300) + (queryText.length > 300 ? '...' : ''),
+        })
+        return
+      }
+    }
+    doExecuteQuery(queryText)
+  }, [activeTab, isExecuting, settings.confirmDangerous, doExecuteQuery])
+
+  const handleConfirmExecute = useCallback(() => {
+    if (confirmQuery) {
+      doExecuteQuery(confirmQuery.query)
+      setConfirmQuery(null)
+    }
+  }, [confirmQuery, doExecuteQuery])
 
   // Keyboard shortcut: Ctrl/Cmd+E to execute (global fallback)
   useEffect(() => {
@@ -182,9 +219,9 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const addTab = useCallback(() => {
     const id = String(Date.now())
     const num = tabs.length + 1
-    setTabs((prev) => [...prev, { id, title: `Query ${num}.sql`, query: '', result: null, lastExecutedQuery: '', pkColumns: [] }])
+    setTabs((prev) => [...prev, { id, title: `Query ${num}.${fileExt}`, query: '', result: null, lastExecutedQuery: '', pkColumns: [] }])
     setActiveTabId(id)
-  }, [tabs.length])
+  }, [tabs.length, fileExt])
 
   const closeTab = useCallback((tabId: string) => {
     if (tabs.length <= 1) return
@@ -395,6 +432,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
                   views={views as string[]}
                   functions={functions as FunctionInfo[]}
                   connectionId={connectionId}
+                  connType={conn?.type as string}
                 />
 
                 {/* Floating Run Button */}
@@ -494,6 +532,19 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      {/* Dangerous Query Confirm Modal */}
+      <ConfirmModal
+        open={!!confirmQuery}
+        title="Dangerous Operation"
+        message="This query contains a destructive operation that could permanently modify or remove data."
+        detail={confirmQuery?.message}
+        confirmText="Execute"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmExecute}
+        onCancel={() => setConfirmQuery(null)}
       />
     </div>
   )

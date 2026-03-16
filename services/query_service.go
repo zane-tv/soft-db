@@ -232,6 +232,10 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string) (*driver.
 		ErrorMessage:  result.Error,
 	})
 
+	// Trim history to maxHistory setting
+	maxHistory := s.settingsService.GetMaxHistory()
+	s.store.TrimHistory(connectionID, maxHistory)
+
 	return result, nil
 }
 

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, type ReactNode } from 'react'
 import * as SettingsService from '../../bindings/soft-db/services/settingsservice'
 import { AppSettings } from '../../bindings/soft-db/services/models'
 
@@ -10,6 +10,7 @@ export const settingsKeys = {
 }
 
 const DEFAULT_SETTINGS = new AppSettings({
+  language: 'en',
   autoConnect: false,
   confirmDangerous: true,
   maxHistory: 500,
@@ -83,6 +84,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     mutation.mutate({ ...current, [key]: value })
   }
+
+  // Sync <html lang> attribute for CSS font switching
+  useEffect(() => {
+    document.documentElement.lang = current.language || 'en'
+  }, [current.language])
 
   return (
     <SettingsContext.Provider value={{ settings: current, updateSettings, updateSetting }}>

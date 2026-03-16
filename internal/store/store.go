@@ -223,6 +223,16 @@ func (s *Store) AddHistory(entry HistoryEntry) error {
 	return err
 }
 
+// TrimHistory removes oldest entries beyond maxEntries for a connection
+func (s *Store) TrimHistory(connectionID string, maxEntries int) {
+	if maxEntries <= 0 {
+		maxEntries = 500
+	}
+	s.db.Exec(`DELETE FROM query_history WHERE connection_id = ? AND id NOT IN (
+		SELECT id FROM query_history WHERE connection_id = ? ORDER BY created_at DESC LIMIT ?
+	)`, connectionID, connectionID, maxEntries)
+}
+
 func (s *Store) ListHistory(connectionID string, limit int) ([]HistoryEntry, error) {
 	if limit <= 0 {
 		limit = 50

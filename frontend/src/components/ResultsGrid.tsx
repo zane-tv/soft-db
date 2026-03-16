@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -13,6 +13,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import type { QueryResult, ColumnMeta } from '../../bindings/soft-db/internal/driver/models'
 import type { ColumnInfo } from '../../bindings/soft-db/internal/driver/models'
 import { useSettingsContext } from '@/hooks/useSettings'
+import { useTranslation } from '@/lib/i18n'
 import { ColumnFilter, textFilterFn, numberFilterFn, booleanFilterFn, dateFilterFn } from './ColumnFilter'
 import { PendingChangesBar, SQLReviewModal } from './PendingChangesBar'
 import { useEditableGrid } from '@/hooks/useEditableGrid'
@@ -59,6 +60,12 @@ const typedFilterFn: FilterFn<Row> = (row, columnId, filterValue) => {
 export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColumns = [], columnInfos = [], onDataChange, pagination, onPageChange, onPageSizeChange }: ResultsGridProps) {
   const resultContainerRef = useRef<HTMLDivElement>(null)
   const { settings } = useSettingsContext()
+  const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
+
+  // ─── Reset scroll to top on page change ───
+  useEffect(() => {
+    resultContainerRef.current?.scrollTo({ top: 0 })
+  }, [pagination?.page, pagination?.pageSize])
 
   // ─── Sort State ───
   const [sorting, setSorting] = useState<SortingState>([])
@@ -245,13 +252,13 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
                 ) : query && (
                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-bg-hover/50 text-text-muted border border-border-subtle">
                     <span className="material-symbols-outlined text-[12px]">lock</span>
-                    Read-only
+                    {t('editor.readOnly')}
                   </span>
                 )}
               </>
             )
           ) : (
-            <span className="text-text-muted/50">Execute a query to see results</span>
+            <span className="text-text-muted/50">{t('results.execute')}</span>
           )}
         </div>
         {queryResult && !queryResult.error && (
@@ -420,7 +427,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <span className="material-symbols-outlined text-[56px] text-text-muted/10 mb-3 block">database</span>
-            <p className="text-text-muted/40 text-sm">Run a query to see results here</p>
+            <p className="text-text-muted/40 text-sm">{t('results.noData')}</p>
           </div>
         </div>
       )}

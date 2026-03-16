@@ -32,7 +32,7 @@
   --color-syntax-comment: #71717A;
 
   /* Fonts */
-  --font-display: "Satoshi", "Inter", sans-serif;
+  --font-display: "Satoshi", "Be Vietnam Pro", "Inter", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
   /* Shadows */
@@ -58,6 +58,11 @@
     from { opacity: 0; transform: translateX(100%); }
     to { opacity: 1; transform: translateX(0); }
   }
+}
+
+/* Vietnamese: swap to Be Vietnam Pro as primary (Satoshi lacks Vietnamese diacritics) */
+html[lang="vi"] {
+  --font-display: "Be Vietnam Pro", "Inter", sans-serif;
 }
 
 /* ─── Base Styles ─── */

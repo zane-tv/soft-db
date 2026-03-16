@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQueryHistory, useSnippets, useSaveSnippet, useDeleteSnippet } from '@/hooks/useSchema'
+import { useSettings } from '@/hooks/useSettings'
+import { useTranslation } from '@/lib/i18n'
 import type { HistoryEntry, Snippet } from '../../bindings/soft-db/internal/store/models'
 
 // ─── SQL keyword highlighting ───
@@ -56,6 +58,8 @@ interface QueryHistoryDrawerProps {
 }
 
 export function QueryHistoryDrawer({ open, onClose, connectionId, connName, connType, onUseQuery }: QueryHistoryDrawerProps) {
+  const { data: settingsData } = useSettings()
+  const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
   const { data: history = [] } = useQueryHistory(connectionId)
   const { data: snippets = [] } = useSnippets(connectionId)
   const saveMutation = useSaveSnippet()
@@ -138,7 +142,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
           {/* Title & Close */}
           <div className="flex items-center justify-between px-6 py-5">
             <div>
-              <h2 className="text-lg font-bold text-text-main tracking-tight">Activity Log</h2>
+              <h2 className="text-lg font-bold text-text-main tracking-tight">{t('history.title')}</h2>
               <p className="text-xs text-text-muted font-medium uppercase tracking-wider mt-0.5">
                 {connName || connectionId} • {connType || 'database'}
               </p>
@@ -162,7 +166,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                     : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
                 }`}
               >
-                History
+                {t('history.tab.history')}
               </button>
               <button
                 onClick={() => setTab('saved')}
@@ -172,7 +176,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                     : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
                 }`}
               >
-                Saved
+                {t('history.tab.saved')}
               </button>
             </div>
           </div>
@@ -185,7 +189,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
               </span>
               <input
                 className="w-full bg-bg-editor text-text-main text-sm rounded-lg border border-border-subtle pl-9 pr-4 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/50 placeholder-text-muted/60 transition-all outline-none"
-                placeholder="Filter by query or status..."
+                placeholder={t('history.filterPlaceholder')}
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -223,7 +227,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                 </div>
               ))
             ) : (
-              <EmptyState icon="history" text="No query history yet" />
+              <EmptyState icon="history" text={t('history.noHistory')} />
             )
           ) : (
             /* ─── Saved Tab ─── */
@@ -237,7 +241,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                 />
               ))
             ) : (
-              <EmptyState icon="bookmark" text="No saved snippets" />
+              <EmptyState icon="bookmark" text={t('history.noSnippets')} />
             )
           )}
         </div>
@@ -247,7 +251,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
           <div className="p-4 border-t border-border-subtle bg-bg-card shrink-0">
             <button className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-border-subtle text-text-muted text-xs font-medium hover:bg-bg-hover hover:text-text-main hover:border-text-muted transition-all">
               <span className="material-symbols-outlined text-sm">add</span>
-              Create new snippet
+              {t('history.createSnippet')}
             </button>
           </div>
         )}

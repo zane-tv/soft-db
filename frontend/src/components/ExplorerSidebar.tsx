@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useColumns, useHasMultiDB, useDatabases, useTablesForDB } from '@/hooks/useSchema'
+import { useSettings } from '@/hooks/useSettings'
+import { useTranslation } from '@/lib/i18n'
 import { TableContextMenu } from './TableContextMenu'
 
 // ─── Types ───
@@ -42,6 +44,8 @@ export function ExplorerSidebar({
   onViewFullData,
   onAttachToAI,
 }: ExplorerSidebarProps) {
+  const { data: settings } = useSettings()
+  const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tableName: string } | null>(null)
 
   const handleTableContextMenu = (e: React.MouseEvent, tableName: string) => {
@@ -116,7 +120,7 @@ export function ExplorerSidebar({
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-text-muted/50 hover:text-text-main hover:bg-bg-hover/30 transition-colors text-[11px]"
         >
           <span className="material-symbols-outlined text-[14px]">settings</span>
-          <span>Settings</span>
+          <span>{t('sidebar.settings')}</span>
         </button>
       </div>
 
@@ -205,6 +209,8 @@ function DatabaseTreeItem({
   onStructureOpen: (name: string) => void
   onTableContextMenu?: (e: React.MouseEvent, tableName: string) => void
 }) {
+  const { data: settings } = useSettings()
+  const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
   const [expanded, setExpanded] = useState(false)
   const { data: tables = [], isLoading } = useTablesForDB(connectionId, expanded ? name : '')
 
@@ -260,7 +266,7 @@ function DatabaseTreeItem({
               />
             ))
           ) : (
-            <li className="px-2 py-1.5 text-[11px] text-text-muted/40 italic">No tables</li>
+            <li className="px-2 py-1.5 text-[11px] text-text-muted/40 italic">{t('sidebar.noTables')}</li>
           )}
         </ul>
       )}
@@ -332,6 +338,8 @@ function TableTreeItem({
   onSettings?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
 }) {
+  const { data: settings } = useSettings()
+  const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
   const [expanded, setExpanded] = useState(false)
   const { data: columns, isLoading } = useColumns(connectionId, expanded ? name : '')
 
@@ -397,7 +405,7 @@ function TableTreeItem({
               </li>
             ))
           ) : (
-            <li className="px-2 py-1.5 text-[11px] text-text-muted/40 italic">No columns</li>
+            <li className="px-2 py-1.5 text-[11px] text-text-muted/40 italic">{t('sidebar.noColumns')}</li>
           )}
         </ul>
       )}

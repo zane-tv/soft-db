@@ -8,9 +8,10 @@ import (
 // AppSettings holds all user-configurable settings
 type AppSettings struct {
 	// General
-	AutoConnect      bool `json:"autoConnect"`
-	ConfirmDangerous bool `json:"confirmDangerous"`
-	MaxHistory       int  `json:"maxHistory"`
+	Language         string `json:"language"`
+	AutoConnect      bool   `json:"autoConnect"`
+	ConfirmDangerous bool   `json:"confirmDangerous"`
+	MaxHistory       int    `json:"maxHistory"`
 
 	// Appearance
 	Theme      string `json:"theme"`
@@ -43,6 +44,7 @@ type AppSettings struct {
 func DefaultSettings() AppSettings {
 	return AppSettings{
 		// General
+		Language:         "en",
 		AutoConnect:      false,
 		ConfirmDangerous: true,
 		MaxHistory:       500,
@@ -145,4 +147,13 @@ func (s *SettingsService) GetConnectionTimeout() int {
 		return 15
 	}
 	return settings.ConnectionTimeout
+}
+
+// GetMaxHistory returns the max history entries per connection (for internal use)
+func (s *SettingsService) GetMaxHistory() int {
+	settings, _ := s.GetSettings()
+	if settings.MaxHistory <= 0 {
+		return 500
+	}
+	return settings.MaxHistory
 }

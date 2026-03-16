@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 import { useSaveConnection, useTestConnection } from '@/hooks/useConnections'
+import { useSettings } from '@/hooks/useSettings'
+import { useTranslation } from '@/lib/i18n'
 import { Dialogs } from '@wailsio/runtime'
 
 interface ConnectionModalProps {
@@ -31,6 +33,8 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
   const saveMutation = useSaveConnection()
   const testMutation = useTestConnection()
   const overlayRef = useRef<HTMLDivElement>(null)
+  const { data: settingsData } = useSettings()
+  const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
 
   const [form, setForm] = useState({
     name: '',
@@ -189,9 +193,9 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         <div className="px-6 py-5 border-b border-border-subtle flex items-center justify-between shrink-0">
           <div>
             <h2 id="connection-modal-title" className="text-lg font-bold text-text-main">
-              {editConnection ? 'Edit Connection' : 'New Connection'}
+              {editConnection ? t('modal.editConnection') : t('modal.newConnection')}
             </h2>
-            <p className="text-sm text-text-muted mt-0.5">Configure your database connection details.</p>
+            <p className="text-sm text-text-muted mt-0.5">{t('modal.configureDesc')}</p>
           </div>
           <button
             onClick={onClose}
@@ -207,7 +211,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
           {/* Connection Name */}
           <div>
             <label htmlFor="conn-name" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-              Connection Name
+              {t('modal.connectionName')}
             </label>
             <input
               id="conn-name"
@@ -221,7 +225,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
           {/* Database Type */}
           <div>
             <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-              Database Type
+              {t('modal.databaseType')}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {DB_TYPES.map((db) => (
@@ -247,7 +251,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
           {isSQLite ? (
             <div>
               <label htmlFor="conn-filepath" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                Database File Path
+                {t('modal.filePath')}
               </label>
               <div className="flex gap-2">
                 <input
@@ -263,7 +267,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-border-subtle bg-bg-app text-sm font-medium text-text-muted hover:text-text-main hover:bg-bg-hover/50 transition-all duration-200 shrink-0"
                 >
                   <span className="material-symbols-outlined text-[18px]">folder_open</span>
-                  Browse
+                  {t('modal.browse')}
                 </button>
               </div>
             </div>
@@ -282,7 +286,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                     }`}
                   >
                     <span className="material-symbols-outlined text-[14px]">tune</span>
-                    Form Fields
+                    {t('modal.formFields')}
                   </button>
                   <button
                     type="button"
@@ -294,7 +298,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                     }`}
                   >
                     <span className="material-symbols-outlined text-[14px]">link</span>
-                    Connection URL
+                    {t('modal.connectionUrl')}
                   </button>
                 </div>
               )}
@@ -303,7 +307,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
               {isMongo && useURI ? (
                 <div>
                   <label htmlFor="conn-uri" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                    Connection URL
+                    {t('modal.connectionUrl')}
                   </label>
                   <textarea
                     id="conn-uri"
@@ -314,7 +318,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                     placeholder="mongodb+srv://user:password@cluster.mongodb.net/mydb?retryWrites=true&w=majority"
                     spellCheck={false}
                   />
-                  <p className="text-[10px] text-text-muted/40 mt-1">Paste your MongoDB connection string from Atlas or your server</p>
+                  <p className="text-[10px] text-text-muted/40 mt-1">{t('modal.urlHint')}</p>
                 </div>
               ) : (
               <>
@@ -322,7 +326,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
                   <label htmlFor="conn-host" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                    Host
+                    {t('modal.host')}
                   </label>
                   <input
                     id="conn-host"
@@ -334,7 +338,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                 </div>
                 <div>
                   <label htmlFor="conn-port" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                    Port
+                    {t('modal.port')}
                   </label>
                   <input
                     id="conn-port"
@@ -349,7 +353,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
               {/* Database */}
               <div>
                 <label htmlFor="conn-database" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                  Database <span className="text-text-muted/40 normal-case font-normal">(optional)</span>
+                  {t('modal.database')} <span className="text-text-muted/40 normal-case font-normal">({t('modal.optional')})</span>
                 </label>
                 <input
                   id="conn-database"
@@ -358,14 +362,14 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
                   placeholder="my_database"
                 />
-                <p className="text-[10px] text-text-muted/40 mt-1">Leave empty to browse all databases</p>
+                <p className="text-[10px] text-text-muted/40 mt-1">{t('modal.dbHint')}</p>
               </div>
 
               {/* Username + Password */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="conn-username" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                    Username
+                    {t('modal.username')}
                   </label>
                   <input
                     id="conn-username"
@@ -377,7 +381,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                 </div>
                 <div>
                   <label htmlFor="conn-password" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                    Password
+                    {t('modal.password')}
                   </label>
                   <input
                     id="conn-password"
@@ -410,10 +414,10 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
               </span>
               <span>
                 {testResult === 'testing'
-                  ? 'Testing connection...'
+                  ? t('modal.testing')
                   : testResult === 'success'
-                    ? 'Connection successful!'
-                    : `Connection failed: ${testError}`}
+                    ? t('modal.success')
+                    : `${t('modal.failed')} ${testError}`}
               </span>
             </div>
           )}
@@ -429,14 +433,14 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
             <span className={`material-symbols-outlined text-[18px] ${testResult === 'testing' ? 'animate-spin' : ''}`}>
               {testResult === 'success' ? 'check' : 'bolt'}
             </span>
-            Test Connection
+            {t('modal.testConnection')}
           </button>
           <div className="flex items-center gap-3">
             <button
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-text-muted hover:text-text-main transition-colors duration-200"
             >
-              Cancel
+              {t('modal.cancel')}
             </button>
             <button
               onClick={handleSave}
@@ -444,7 +448,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
               className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"
             >
               <span className="material-symbols-outlined text-[18px]">save</span>
-              {editConnection ? 'Update' : 'Save'}
+              {editConnection ? t('modal.update') : t('modal.save')}
             </button>
           </div>
         </div>
