@@ -56,8 +56,10 @@ jobs:
       matrix:
         include:
           - arch: amd64
+            runner: macos-13    # x86_64 runner
           - arch: arm64
-    runs-on: macos-latest
+            runner: macos-latest # ARM64 (M1/M2) runner
+    runs-on: ${{ matrix.runner }}
     name: Build macOS ${{ matrix.arch }}
 
     steps:
@@ -82,8 +84,6 @@ jobs:
 
       - name: Build & Package .app bundle
         run: wails3 task darwin:package
-        env:
-          GOARCH: ${{ matrix.arch }}
 
       - name: Create DMG
         run: |
