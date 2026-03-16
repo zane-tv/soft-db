@@ -47,9 +47,11 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string) (*driver.
 		status = "error"
 	} else {
 		trimmed := strings.TrimSpace(strings.ToUpper(query))
+		// MongoDB JSON queries (e.g. { "collection": "...", "action": "find" }) and SQL read-only queries
 		if !strings.HasPrefix(trimmed, "SELECT") && !strings.HasPrefix(trimmed, "SHOW") &&
 			!strings.HasPrefix(trimmed, "DESCRIBE") && !strings.HasPrefix(trimmed, "EXPLAIN") &&
-			!strings.HasPrefix(trimmed, "PRAGMA") {
+			!strings.HasPrefix(trimmed, "PRAGMA") && !strings.HasPrefix(trimmed, "WITH") &&
+			!strings.HasPrefix(strings.TrimSpace(query), "{") {
 			status = "mutation"
 		}
 	}

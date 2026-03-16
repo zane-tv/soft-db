@@ -40,7 +40,7 @@ interface ExplorerState {
 const explorerStateCache = new Map<string, ExplorerState>()
 
 const DEFAULT_TABS: QueryTab[] = [
-  { id: '1', title: 'Query 1.sql', query: 'SELECT * FROM users\nWHERE status = \'active\'\nORDER BY created_at DESC\nLIMIT 50;', result: null, lastExecutedQuery: '', pkColumns: [] },
+  { id: '1', title: 'Query 1.sql', query: '', result: null, lastExecutedQuery: '', pkColumns: [] },
 ]
 
 export function TableExplorer({ connectionId }: TableExplorerProps) {
@@ -191,7 +191,8 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     if (conn?.type === 'mongodb') {
       updateQuery(`{ "collection": "${tableName}", "action": "find", "limit": ${settings.defaultLimit} }`)
     } else {
-      updateQuery(`SELECT *\nFROM "${tableName}"\nLIMIT ${settings.defaultLimit};`)
+      const q = conn?.type === 'mysql' || conn?.type === 'mariadb' ? '`' : '"'
+      updateQuery(`SELECT *\nFROM ${q}${tableName}${q}\nLIMIT ${settings.defaultLimit};`)
     }
   }, [updateQuery, settings.defaultLimit, conn?.type])
 

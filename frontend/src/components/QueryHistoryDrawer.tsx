@@ -93,6 +93,9 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
 
   const grouped = useMemo(() => groupByDate(filteredHistory), [filteredHistory])
 
+  // Set of saved query texts for quick lookup
+  const savedQueryTexts = useMemo(() => new Set((snippets as Snippet[]).map((s) => s.queryText)), [snippets])
+
   // ─── Actions ───
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text)
@@ -119,7 +122,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
       {/* Drawer */}
       <div className="fixed right-0 top-0 bottom-0 w-[400px] bg-bg-card border-l border-border-subtle flex flex-col z-50 animate-slide-in-right">
         {/* ─── Header ─── */}
-        <div className="flex flex-col border-b border-border-subtle bg-bg-card sticky top-0 z-30 shrink-0">
+        <div className="flex flex-col border-b border-border-subtle bg-bg-card shrink-0">
           {/* Title & Close */}
           <div className="flex items-center justify-between px-6 py-5">
             <div>
@@ -198,6 +201,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                       onUse={() => onUseQuery?.(entry.queryText)}
                       onCopy={() => copyToClipboard(entry.queryText)}
                       onSave={() => saveAsSnippet(entry.queryText)}
+                      isSaved={savedQueryTexts.has(entry.queryText)}
                     />
                   ))}
                 </div>
@@ -237,11 +241,12 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
 }
 
 // ─── History Item ───
-function HistoryItem({ entry, onUse, onCopy, onSave }: {
+function HistoryItem({ entry, onUse, onCopy, onSave, isSaved = false }: {
   entry: HistoryEntry
   onUse: () => void
   onCopy: () => void
   onSave: () => void
+  isSaved?: boolean
 }) {
   const time = new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -277,13 +282,19 @@ function HistoryItem({ entry, onUse, onCopy, onSave }: {
         {highlightSQL(entry.queryText)}
       </div>
       {/* Hover Actions */}
+      {/* Saved indicator */}
+      {isSaved && (
+        <div className="absolute right-3 top-3">
+          <span className="material-symbols-outlined text-primary text-[14px]">bookmark_added</span>
+        </div>
+      )}
       <div className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
         <button
-          onClick={(e) => { e.stopPropagation(); onSave() }}
-          className="bg-bg-card hover:bg-primary text-text-muted hover:text-text-main p-1.5 rounded-md border border-border-subtle transition-colors"
-          title="Save as Snippet"
+          onClick={(e) => { e.stopPropagation(); if (!isSaved) onSave() }}
+          className={`p-1.5 rounded-md border border-border-subtle transition-colors ${isSaved ? 'bg-primary/20 text-primary cursor-default' : 'bg-bg-card hover:bg-primary text-text-muted hover:text-text-main'}`}
+          title={isSaved ? 'Already saved' : 'Save as Snippet'}
         >
-          <span className="material-symbols-outlined text-[16px]">bookmark</span>
+          <span className="material-symbols-outlined text-[16px]">{isSaved ? 'bookmark_added' : 'bookmark'}</span>
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onCopy() }}

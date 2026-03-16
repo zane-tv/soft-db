@@ -259,6 +259,14 @@ type Snippet struct {
 }
 
 func (s *Store) SaveSnippet(snippet Snippet) error {
+	// Prevent duplicate snippets (same connection + same query text)
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM snippets WHERE connection_id = ? AND query_text = ?`,
+		snippet.ConnectionID, snippet.QueryText).Scan(&count)
+	if count > 0 {
+		return nil // already saved
+	}
+
 	tagsJSON, _ := json.Marshal(snippet.Tags)
 	_, err := s.db.Exec(`
 		INSERT INTO snippets (connection_id, title, query_text, tags)
