@@ -26,9 +26,6 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-
       - name: Install NSIS
         run: choco install nsis -y
 
@@ -37,14 +34,22 @@ jobs:
           cd frontend
           bun install
 
-      - name: Build & Create NSIS Installer
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Build binary
+        run: wails3 task windows:build
+
+      - name: Create NSIS Installer
         run: wails3 task windows:create:nsis:installer
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoftDB-windows-amd64
-          path: bin/*-installer.exe
+          path: |
+            bin/*-installer.exe
+            bin/*.exe
 
   build-macos:
     strategy:
@@ -67,23 +72,27 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-
       - name: Install frontend deps
         run: |
           cd frontend
           bun install
 
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
       - name: Build & Package .app bundle
-        run: wails3 task darwin:package -- ARCH=${{ matrix.arch }}
+        run: wails3 task darwin:package
         env:
           GOARCH: ${{ matrix.arch }}
 
       - name: Create tar.gz
         run: |
           cd bin
-          tar -czf SoftDB-darwin-${{ matrix.arch }}.tar.gz SoftDB.app
+          if [ -d "SoftDB.app" ]; then
+            tar -czf SoftDB-darwin-${{ matrix.arch }}.tar.gz SoftDB.app
+          else
+            tar -czf SoftDB-darwin-${{ matrix.arch }}.tar.gz SoftDB
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -107,9 +116,8 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-
+      # IMPORTANT: Linux deps MUST be installed before Wails CLI
+      # because `go install wails3` compiles CGO code that links against GTK
       - name: Install Linux deps
         run: |
           sudo apt-get update
@@ -119,6 +127,9 @@ jobs:
         run: |
           cd frontend
           bun install
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
       - name: Build
         env:
@@ -135,8 +146,9 @@ jobs:
 
       - name: Package fallback tar.gz
         run: |
-          if [ ! -f bin/*.AppImage ] && [ ! -f bin/*.deb ]; then
-            tar -czf bin/SoftDB-linux-amd64.tar.gz -C bin SoftDB
+          cd bin
+          if ! ls *.AppImage *.deb 2>/dev/null | head -1 > /dev/null; then
+            tar -czf SoftDB-linux-amd64.tar.gz SoftDB
           fi
         shell: bash
 
