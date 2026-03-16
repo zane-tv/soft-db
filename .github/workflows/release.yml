@@ -47,9 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SoftDB-windows-amd64
-          path: |
-            build/windows/nsis/*-installer.exe
-            bin/*.exe
+          path: build/windows/nsis/*-installer.exe
 
   build-macos:
     runs-on: macos-latest
@@ -150,14 +148,6 @@ jobs:
         run: wails3 task linux:create:deb
         continue-on-error: true
 
-      - name: Package fallback tar.gz
-        run: |
-          cd bin
-          if ! ls *.AppImage *.deb 2>/dev/null | head -1 > /dev/null; then
-            tar -czf SoftDB-linux-amd64.tar.gz SoftDB
-          fi
-        shell: bash
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -165,7 +155,6 @@ jobs:
           path: |
             bin/*.AppImage
             bin/*.deb
-            bin/*.tar.gz
 
   release:
     needs: [build-windows, build-macos, build-linux]
