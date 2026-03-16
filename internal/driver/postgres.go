@@ -259,6 +259,11 @@ func (d *PostgresDriver) Databases(ctx context.Context) ([]DatabaseInfo, error) 
 		return nil, fmt.Errorf("not connected")
 	}
 
+	// If a specific database was configured, only return that one
+	if d.config.Database != "" {
+		return []DatabaseInfo{{Name: d.config.Database}}, nil
+	}
+
 	rows, err := d.db.QueryContext(ctx,
 		`SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname`)
 	if err != nil {

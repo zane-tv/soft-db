@@ -118,9 +118,13 @@ export function useSnippets(connectionId: string) {
 }
 
 export function useSaveSnippet() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (snippet: Parameters<typeof QueryService.SaveSnippet>[0]) =>
       QueryService.SaveSnippet(snippet),
+    onSuccess: (_data, snippet) => {
+      queryClient.invalidateQueries({ queryKey: ['snippets', snippet.connectionId] })
+    },
   })
 }
 

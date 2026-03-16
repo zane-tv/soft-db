@@ -188,14 +188,14 @@ func (s *EditService) InsertRow(connectionID string, table string, values map[st
 	var cols []string
 	var args []interface{}
 	for col, val := range values {
-		cols = append(cols, quoteIdent(col))
+		cols = append(cols, quoteIdent(col, dbType))
 		args = append(args, val)
 	}
 
 	placeholderList := makePlaceholders(dbType, len(args))
 
 	execSQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		quoteIdent(table),
+		quoteIdent(table, dbType),
 		strings.Join(cols, ", "),
 		strings.Join(placeholderList, ", "),
 	)
@@ -206,7 +206,7 @@ func (s *EditService) InsertRow(connectionID string, table string, values map[st
 		displayVals = append(displayVals, formatValue(val))
 	}
 	displaySQL := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
-		quoteIdent(table),
+		quoteIdent(table, dbType),
 		strings.Join(cols, ", "),
 		strings.Join(displayVals, ", "),
 	)
@@ -280,18 +280,18 @@ func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList
 		argIdx := 1
 
 		for col, val := range pkValues {
-			whereParts = append(whereParts, fmt.Sprintf("%s = %s", quoteIdent(col), placeholder(dbType, argIdx)))
-			displayWhere = append(displayWhere, fmt.Sprintf("%s = %s", quoteIdent(col), formatValue(val)))
+			whereParts = append(whereParts, fmt.Sprintf("%s = %s", quoteIdent(col, dbType), placeholder(dbType, argIdx)))
+			displayWhere = append(displayWhere, fmt.Sprintf("%s = %s", quoteIdent(col, dbType), formatValue(val)))
 			args = append(args, val)
 			argIdx++
 		}
 
 		execSQL := fmt.Sprintf("DELETE FROM %s WHERE %s",
-			quoteIdent(table),
+			quoteIdent(table, dbType),
 			strings.Join(whereParts, " AND "),
 		)
 		displaySQL := fmt.Sprintf("DELETE FROM %s WHERE %s",
-			quoteIdent(table),
+			quoteIdent(table, dbType),
 			strings.Join(displayWhere, " AND "),
 		)
 		result.GeneratedSQL = append(result.GeneratedSQL, displaySQL)
@@ -332,11 +332,11 @@ func buildParamUpdateSQL(req CellUpdateRequest, dbType driver.DatabaseType) (dis
 	// SET clause
 	var setDisplay, setExec string
 	if req.NewValue == nil {
-		setDisplay = fmt.Sprintf("%s = NULL", quoteIdent(req.Column))
+		setDisplay = fmt.Sprintf("%s = NULL", quoteIdent(req.Column, dbType))
 		setExec = setDisplay
 	} else {
-		setDisplay = fmt.Sprintf("%s = %s", quoteIdent(req.Column), formatValue(req.NewValue))
-		setExec = fmt.Sprintf("%s = %s", quoteIdent(req.Column), placeholder(dbType, argIdx))
+		setDisplay = fmt.Sprintf("%s = %s", quoteIdent(req.Column, dbType), formatValue(req.NewValue))
+		setExec = fmt.Sprintf("%s = %s", quoteIdent(req.Column, dbType), placeholder(dbType, argIdx))
 		args = append(args, req.NewValue)
 		argIdx++
 	}
@@ -345,16 +345,16 @@ func buildParamUpdateSQL(req CellUpdateRequest, dbType driver.DatabaseType) (dis
 	whereDisplay := make([]string, 0, len(req.PkColumns))
 	whereExec := make([]string, 0, len(req.PkColumns))
 	for col, val := range req.PkColumns {
-		whereDisplay = append(whereDisplay, fmt.Sprintf("%s = %s", quoteIdent(col), formatValue(val)))
-		whereExec = append(whereExec, fmt.Sprintf("%s = %s", quoteIdent(col), placeholder(dbType, argIdx)))
+		whereDisplay = append(whereDisplay, fmt.Sprintf("%s = %s", quoteIdent(col, dbType), formatValue(val)))
+		whereExec = append(whereExec, fmt.Sprintf("%s = %s", quoteIdent(col, dbType), placeholder(dbType, argIdx)))
 		args = append(args, val)
 		argIdx++
 	}
 
 	displaySQL = fmt.Sprintf("UPDATE %s SET %s WHERE %s",
-		quoteIdent(req.Table), setDisplay, strings.Join(whereDisplay, " AND "))
+		quoteIdent(req.Table, dbType), setDisplay, strings.Join(whereDisplay, " AND "))
 	execSQL = fmt.Sprintf("UPDATE %s SET %s WHERE %s",
-		quoteIdent(req.Table), setExec, strings.Join(whereExec, " AND "))
+		quoteIdent(req.Table, dbType), setExec, strings.Join(whereExec, " AND "))
 
 	return displaySQL, execSQL, args
 }
@@ -378,9 +378,15 @@ func makePlaceholders(dbType driver.DatabaseType, count int) []string {
 	return result
 }
 
-// quoteIdent wraps an identifier in double quotes
-func quoteIdent(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+// quoteIdent wraps an identifier in the appropriate quote character for the database type.
+// MySQL/MariaDB use backticks, PostgreSQL/Redshift/SQLite use double quotes.
+func quoteIdent(name string, dbType driver.DatabaseType) string {
+	switch dbType {
+	case driver.MySQL, driver.MariaDB:
+		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	default:
+		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	}
 }
 
 // formatValue converts a Go value to a SQL literal (for display/history only — NOT for execution)

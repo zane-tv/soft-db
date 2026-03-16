@@ -249,6 +249,11 @@ func (d *MySQLDriver) Databases(ctx context.Context) ([]DatabaseInfo, error) {
 		return nil, fmt.Errorf("not connected")
 	}
 
+	// If a specific database was configured, only return that one
+	if d.config.Database != "" {
+		return []DatabaseInfo{{Name: d.config.Database}}, nil
+	}
+
 	systemDBs := map[string]bool{
 		"information_schema": true, "performance_schema": true,
 		"mysql": true, "sys": true,

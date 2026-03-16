@@ -9,10 +9,7 @@ type Row = Record<string, unknown>
 interface VirtualRowProps {
   row: TanStackRow<Row>
   virtualRow: VirtualItem
-  virtualColumns: VirtualItem[]
   visibleColumns: { id: string; type: string; width: number }[]
-  virtualPaddingLeft: number
-  virtualPaddingRight: number
   pkColumns: string[]
   isEditable: boolean
   editingCell: { row: number; col: string } | null
@@ -29,10 +26,7 @@ interface VirtualRowProps {
 export const VirtualRow = React.memo(function VirtualRow({
   row,
   virtualRow,
-  virtualColumns,
   visibleColumns,
-  virtualPaddingLeft,
-  virtualPaddingRight,
   pkColumns,
   isEditable,
   editingCell,
@@ -68,12 +62,7 @@ export const VirtualRow = React.memo(function VirtualRow({
       }}
       onContextMenu={handleRowContextMenu}
     >
-      {/* Left padding for column virtualization */}
-      {virtualPaddingLeft > 0 && <div style={{ width: virtualPaddingLeft, flexShrink: 0 }} />}
-
-      {virtualColumns.map((vc) => {
-        const colMeta = visibleColumns[vc.index]
-        if (!colMeta) return null
+      {visibleColumns.map((colMeta) => {
         const columnId = colMeta.id
         const isDirty = isCellDirty(row.index, columnId)
         const isPk = pkColumns.includes(columnId)
@@ -100,13 +89,10 @@ export const VirtualRow = React.memo(function VirtualRow({
               e.stopPropagation()
               onContextMenu(e, row.original, row.index, columnId)
             }}
-            width={vc.size}
+            width={colMeta.width}
           />
         )
       })}
-
-      {/* Right padding for column virtualization */}
-      {virtualPaddingRight > 0 && <div style={{ width: virtualPaddingRight, flexShrink: 0 }} />}
     </div>
   )
 })

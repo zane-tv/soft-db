@@ -107,11 +107,14 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    columnResizeMode: 'onChange',
+    enableColumnResizing: true,
   })
 
   const { rows: tableRows } = table.getRowModel()
 
   // ─── Visible columns metadata (for VirtualRow) ───
+  const columnSizing = table.getState().columnSizing
   const visibleColumns = useMemo(() =>
     table.getVisibleLeafColumns().map((col) => ({
       id: col.id,
@@ -119,7 +122,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
       width: col.getSize(),
     })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [table.getVisibleLeafColumns().length, queryResult?.columns]
+    [table.getVisibleLeafColumns().length, queryResult?.columns, columnSizing]
   )
 
   // ─── Row Virtualizer ───
@@ -130,20 +133,8 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
     overscan: 20,
   })
 
-  // ─── Column Virtualizer ───
-  const columnVirtualizer = useVirtualizer({
-    horizontal: true,
-    count: visibleColumns.length,
-    getScrollElement: () => resultContainerRef.current,
-    estimateSize: (index) => visibleColumns[index]?.width || DEFAULT_COL_WIDTH,
-    overscan: 3,
-  })
-
-  const virtualColumns = columnVirtualizer.getVirtualItems()
-  const virtualPaddingLeft = virtualColumns[0]?.start ?? 0
-  const virtualPaddingRight =
-    columnVirtualizer.getTotalSize() -
-    (virtualColumns[virtualColumns.length - 1]?.end ?? 0)
+  // ─── Total column width (for header + body sync) ───
+  const totalColumnWidth = table.getTotalSize()
 
   // ─── Handlers ───
   const handleApply = useCallback(async () => {
@@ -180,6 +171,35 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
     setDeleteTarget(null)
     onDataChange?.()
   }, [deleteTarget, editGrid, onDataChange])
+
+  const handleExport = useCallback(() => {
+    if (!queryResult?.columns?.length) return
+    const cols = queryResult.columns
+    const rows = table.getFilteredRowModel().rows
+
+    const escapeCsv = (val: unknown): string => {
+      if (val === null || val === undefined) return ''
+      const str = String(val)
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"'
+      }
+      return str
+    }
+
+    const header = cols.map((c) => escapeCsv(c.name)).join(',')
+    const dataRows = rows.map((row) =>
+      cols.map((c) => escapeCsv(row.original[c.name])).join(',')
+    )
+    const csv = [header, ...dataRows].join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `export_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [queryResult, table])
 
   const activeFilterCount = columnFilters.length + (globalFilter ? 1 : 0)
 
@@ -274,7 +294,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
 
             {/* Export */}
             <button
-              onClick={() => alert('Export coming soon!')}
+              onClick={handleExport}
               aria-label="Export results"
               className="flex items-center gap-1.5 px-2 py-1 hover:bg-bg-hover/50 rounded text-text-muted hover:text-text-main transition-colors"
             >
@@ -296,36 +316,34 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
       ) : queryResult?.columns?.length ? (
         <div ref={resultContainerRef} className="flex-1 overflow-auto" role="grid" aria-label="Query results">
           {/* ─── HEADER (sticky, outside virtual scroll) ─── */}
-          <div className="sticky top-0 z-10 bg-bg-card" style={{ width: columnVirtualizer.getTotalSize() }}>
+          <div className="sticky top-0 z-10 bg-bg-card" style={{ width: totalColumnWidth }}>
             {table.getHeaderGroups().map((headerGroup) => (
               <div key={headerGroup.id} className="flex">
-                {/* Left column padding */}
-                {virtualPaddingLeft > 0 && <div style={{ width: virtualPaddingLeft, flexShrink: 0 }} />}
-
-                {virtualColumns.map((vc) => {
-                  const header = headerGroup.headers[vc.index]
-                  if (!header) return null
-                  return (
+                {headerGroup.headers.map((header) => (
                     <div
                       key={header.id}
                       role="columnheader"
-                      className="px-4 py-2.5 text-xs font-bold text-text-muted uppercase tracking-wider border-b border-border-subtle/50 shrink-0"
-                      style={{ width: vc.size }}
+                      className="relative px-4 py-2.5 text-xs font-bold text-text-muted uppercase tracking-wider border-b border-border-subtle/50 shrink-0 group/col"
+                      style={{ width: header.column.getSize() }}
                     >
                       <div
-                        className={`flex items-center gap-1.5 ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-text-main' : ''}`}
+                        className={`flex items-center gap-1.5 overflow-hidden ${header.column.getCanSort() ? 'cursor-pointer select-none hover:text-text-main' : ''}`}
                         onClick={header.column.getToggleSortingHandler()}
                       >
-                        <span className="material-symbols-outlined text-[14px] text-text-muted/40">
+                        <span className="material-symbols-outlined text-[14px] text-text-muted/40 shrink-0">
                           {getColumnIcon((header.column.columnDef.meta as Record<string, string>)?.type)}
                         </span>
-                        {header.column.columnDef.header as string}
-                        {{
-                          asc: <span className="material-symbols-outlined text-[14px] text-primary">arrow_upward</span>,
-                          desc: <span className="material-symbols-outlined text-[14px] text-primary">arrow_downward</span>,
-                        }[header.column.getIsSorted() as string] ?? null}
+                        <span className="truncate" title={header.column.columnDef.header as string}>
+                          {header.column.columnDef.header as string}
+                        </span>
+                        <span className="shrink-0">
+                          {{
+                            asc: <span className="material-symbols-outlined text-[14px] text-primary">arrow_upward</span>,
+                            desc: <span className="material-symbols-outlined text-[14px] text-primary">arrow_downward</span>,
+                          }[header.column.getIsSorted() as string] ?? null}
+                        </span>
                         {pkColumns.includes(header.column.id) && (
-                          <span className="material-symbols-outlined text-[10px] text-amber-400" title="Primary Key">key</span>
+                          <span className="material-symbols-outlined text-[10px] text-amber-400 shrink-0" title="Primary Key">key</span>
                         )}
                       </div>
 
@@ -334,12 +352,23 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
                           <ColumnFilter column={header.column} />
                         </div>
                       )}
-                    </div>
-                  )
-                })}
 
-                {/* Right column padding */}
-                {virtualPaddingRight > 0 && <div style={{ width: virtualPaddingRight, flexShrink: 0 }} />}
+                      {/* Column Resize Handle */}
+                      <div
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        className="absolute right-0 top-0 h-full w-[8px] cursor-col-resize select-none touch-none -translate-x-1/2 z-10"
+                      >
+                        <div
+                          className={`absolute right-[3px] top-[6px] bottom-[6px] w-[2px] rounded-full transition-colors ${
+                            header.column.getIsResizing()
+                              ? 'bg-primary'
+                              : 'bg-border-subtle/40 group-hover/col:bg-primary/60'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                ))}
               </div>
             ))}
           </div>
@@ -349,7 +378,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
             className="font-mono text-text-muted relative"
             style={{
               height: `${rowVirtualizer.getTotalSize()}px`,
-              width: `${columnVirtualizer.getTotalSize()}px`,
+              width: `${totalColumnWidth}px`,
               fontSize: `${settings.fontSize}px`,
             }}
           >
@@ -360,10 +389,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
                   key={row.id}
                   row={row}
                   virtualRow={virtualRow}
-                  virtualColumns={virtualColumns}
                   visibleColumns={visibleColumns}
-                  virtualPaddingLeft={virtualPaddingLeft}
-                  virtualPaddingRight={virtualPaddingRight}
                   pkColumns={pkColumns}
                   isEditable={editGrid.isEditable}
                   editingCell={editGrid.editingCell}
