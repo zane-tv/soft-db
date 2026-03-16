@@ -36,14 +36,16 @@ type ModelInfo struct {
 	Description string `json:"description"`
 }
 
-// openAIRequest represents the chat completions request body
-type openAIRequest struct {
-	Model    string          `json:"model"`
-	Messages []openAIMessage `json:"messages"`
-	Stream   bool            `json:"stream"`
+// codexRequest represents the ChatGPT Codex Responses API request body
+type codexRequest struct {
+	Model        string          `json:"model"`
+	Instructions string          `json:"instructions,omitempty"`
+	Input        []codexMessage  `json:"input"`
+	Stream       bool            `json:"stream"`
+	Store        bool            `json:"store"`
 }
 
-type openAIMessage struct {
+type codexMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
@@ -94,8 +96,8 @@ func (a *AIService) SendMessage(connectionID, message, model string) error {
 		Model:        model,
 	})
 
-	// Build messages array with context
-	messages, err := a.buildMessages(connectionID, message, model)
+	// Build instructions + input for Codex Responses API
+	instructions, input, err := a.buildMessages(connectionID, message, model)
 	if err != nil {
 		return err
 	}
@@ -109,7 +111,7 @@ func (a *AIService) SendMessage(connectionID, message, model string) error {
 		defer cancel()
 		defer delete(a.activeStreams, connectionID)
 
-		fullContent, err := a.streamChatCompletion(ctx, token, model, messages, connectionID)
+		fullContent, err := a.streamChatCompletion(ctx, token, model, instructions, input, connectionID)
 		if err != nil {
 			if ctx.Err() == context.Canceled {
 				slog.Info("Stream cancelled by user", "connectionId", connectionID)
@@ -183,42 +185,55 @@ func (a *AIService) SetSelectedModel(connectionID, modelID string) error {
 
 // ─── Internal Methods ───
 
-// buildMessages constructs the message array with DB context
-func (a *AIService) buildMessages(connectionID, userMessage, model string) ([]openAIMessage, error) {
-	var messages []openAIMessage
+// buildMessages constructs the input array and instructions for Codex Responses API
+func (a *AIService) buildMessages(connectionID, userMessage, model string) (string, []codexMessage, error) {
+	// System prompt becomes "instructions"
+	instructions := a.buildSystemPrompt(connectionID)
 
-	// Build system prompt with DB context
-	systemPrompt := a.buildSystemPrompt(connectionID)
-	messages = append(messages, openAIMessage{Role: "system", Content: systemPrompt})
+	// Build input array (user/assistant messages only, no system)
+	var input []codexMessage
 
 	// Load recent chat history for context
 	history, _ := a.store.ListChatMessages(connectionID, 20)
 	for _, msg := range history {
-		// Skip the just-saved user message (last one)
-		messages = append(messages, openAIMessage{Role: msg.Role, Content: msg.Content})
+		if msg.Role == "system" {
+			continue
+		}
+		input = append(input, codexMessage{Role: msg.Role, Content: msg.Content})
 	}
 
-	return messages, nil
+	return instructions, input, nil
 }
 
 // buildSystemPrompt creates the system prompt with DB schema context
 func (a *AIService) buildSystemPrompt(connectionID string) string {
 	var sb strings.Builder
 
-	sb.WriteString("You are a database assistant integrated into SoftDB, a database management tool.\n")
+	// Detect DB type
+	dbType := a.connService.GetConnectionType(connectionID)
+	isMongo := dbType == "mongodb"
+
+	if isMongo {
+		sb.WriteString("You are a MongoDB database assistant integrated into SoftDB, a database management tool.\n")
+	} else {
+		sb.WriteString("You are a database assistant integrated into SoftDB, a database management tool.\n")
+	}
 
 	// Try to get schema info
 	tables, err := a.schemaService.GetTables(connectionID)
 	if err == nil && len(tables) > 0 {
-		sb.WriteString("\nAvailable tables and their structure:\n")
+		if isMongo {
+			sb.WriteString("\nAvailable collections and their fields:\n")
+		} else {
+			sb.WriteString("\nAvailable tables and their structure:\n")
+		}
 		for i, table := range tables {
-			if i >= 20 { // Limit to 20 tables to avoid context overflow
-				sb.WriteString(fmt.Sprintf("\n... and %d more tables", len(tables)-20))
+			if i >= 20 {
+				sb.WriteString(fmt.Sprintf("\n... and %d more", len(tables)-20))
 				break
 			}
 			sb.WriteString(fmt.Sprintf("\n- %s", table.Name))
 
-			// Get columns for each table (limit to first 10 tables for detail)
 			if i < 10 {
 				cols, err := a.schemaService.GetColumns(connectionID, table.Name)
 				if err == nil {
@@ -238,19 +253,50 @@ func (a *AIService) buildSystemPrompt(connectionID string) string {
 		}
 	}
 
-	sb.WriteString("\n\nHelp the user write queries, explain schemas, and optimize SQL.")
-	sb.WriteString("\nWhen generating SQL, format it in code blocks.")
+	if isMongo {
+		sb.WriteString("\n\nHelp the user query and manage their MongoDB collections.")
+		sb.WriteString("\nSoftDB uses a JSON query format. ALWAYS generate queries in this exact format:")
+		sb.WriteString("\n")
+		sb.WriteString("\nFind documents:")
+		sb.WriteString("\n```json")
+		sb.WriteString("\n{ \"collection\": \"users\", \"action\": \"find\", \"filter\": { \"active\": true }, \"limit\": 100 }")
+		sb.WriteString("\n```")
+		sb.WriteString("\n")
+		sb.WriteString("\nCount documents:")
+		sb.WriteString("\n```json")
+		sb.WriteString("\n{ \"collection\": \"users\", \"action\": \"count\", \"filter\": { \"role\": \"admin\" } }")
+		sb.WriteString("\n```")
+		sb.WriteString("\n")
+		sb.WriteString("\nInsert document:")
+		sb.WriteString("\n```json")
+		sb.WriteString("\n{ \"collection\": \"users\", \"action\": \"insert\", \"document\": { \"name\": \"John\", \"role\": \"user\" } }")
+		sb.WriteString("\n```")
+		sb.WriteString("\n")
+		sb.WriteString("\nDelete documents:")
+		sb.WriteString("\n```json")
+		sb.WriteString("\n{ \"collection\": \"users\", \"action\": \"delete\", \"filter\": { \"active\": false } }")
+		sb.WriteString("\n```")
+		sb.WriteString("\n")
+		sb.WriteString("\nSupported actions: find, count, insert, delete.")
+		sb.WriteString("\nDo NOT use JavaScript syntax like db.collection.find(). Only use the JSON format shown above.")
+		sb.WriteString("\nThe 'filter' field uses MongoDB query operators ($gt, $lt, $in, $regex, etc.).")
+	} else {
+		sb.WriteString("\n\nHelp the user write queries, explain schemas, and optimize SQL.")
+		sb.WriteString("\nWhen generating SQL, format it in code blocks.")
+	}
 	sb.WriteString("\nRespond in the same language the user writes in.")
 
 	return sb.String()
 }
 
-// streamChatCompletion calls OpenAI API with streaming and emits chunk events
-func (a *AIService) streamChatCompletion(ctx context.Context, token, model string, messages []openAIMessage, connectionID string) (string, error) {
-	reqBody := openAIRequest{
-		Model:    model,
-		Messages: messages,
-		Stream:   true,
+// streamChatCompletion calls ChatGPT Codex Responses API with streaming
+func (a *AIService) streamChatCompletion(ctx context.Context, token, model string, instructions string, input []codexMessage, connectionID string) (string, error) {
+	reqBody := codexRequest{
+		Model:        model,
+		Instructions: instructions,
+		Input:        input,
+		Stream:       true,
+		Store:        false,
 	}
 
 	bodyJSON, err := json.Marshal(reqBody)
@@ -258,7 +304,7 @@ func (a *AIService) streamChatCompletion(ctx context.Context, token, model strin
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", strings.NewReader(string(bodyJSON)))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://chatgpt.com/backend-api/codex/responses", strings.NewReader(string(bodyJSON)))
 	if err != nil {
 		return "", err
 	}
@@ -277,12 +323,16 @@ func (a *AIService) streamChatCompletion(ctx context.Context, token, model strin
 		return "", a.handleAPIError(resp, connectionID)
 	}
 
-	// Parse SSE stream
+	// Parse SSE stream (Responses API format)
 	var fullContent strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
+	// Increase buffer for large responses
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// SSE format: "event: <type>" then "data: <json>"
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -291,27 +341,30 @@ func (a *AIService) streamChatCompletion(ctx context.Context, token, model strin
 			break
 		}
 
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content string `json:"content"`
-				} `json:"delta"`
-			} `json:"choices"`
+		// Parse the SSE data JSON
+		var event struct {
+			Type  string `json:"type"`
+			Delta string `json:"delta"`
 		}
 
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
 		}
 
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			content := chunk.Choices[0].Delta.Content
-			fullContent.WriteString(content)
+		// Handle text delta events
+		if event.Type == "response.output_text.delta" && event.Delta != "" {
+			fullContent.WriteString(event.Delta)
 
 			// Emit chunk to frontend
 			a.emitEvent(connectionID, "ai:chunk", map[string]interface{}{
-				"content": content,
+				"content": event.Delta,
 				"role":    "assistant",
 			})
+		}
+
+		// Handle completion
+		if event.Type == "response.completed" {
+			break
 		}
 	}
 

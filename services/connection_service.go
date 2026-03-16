@@ -18,6 +18,7 @@ type ConnectionService struct {
 	settingsService *SettingsService
 	drivers         map[string]driver.Driver
 	configs         map[string]driver.ConnectionConfig
+	disconnected    map[string]bool // tracks explicitly disconnected connections
 	mu              sync.RWMutex
 }
 
@@ -28,6 +29,7 @@ func NewConnectionService(s *store.Store, ss *SettingsService) *ConnectionServic
 		settingsService: ss,
 		drivers:         make(map[string]driver.Driver),
 		configs:         make(map[string]driver.ConnectionConfig),
+		disconnected:    make(map[string]bool),
 	}
 }
 
@@ -44,8 +46,11 @@ func (s *ConnectionService) ListConnections() ([]driver.ConnectionConfig, error)
 	for i, c := range conns {
 		if drv, ok := s.drivers[c.ID]; ok && drv.IsConnected() {
 			conns[i].Status = "connected"
-		} else {
+		} else if s.disconnected[c.ID] {
+			// Explicitly disconnected or connection lost
 			conns[i].Status = "offline"
+		} else {
+			conns[i].Status = "idle"
 		}
 	}
 	return conns, nil
@@ -93,6 +98,60 @@ func (s *ConnectionService) TestConnection(cfg driver.ConnectionConfig) error {
 	return drv.Ping(ctx)
 }
 
+// PingAll checks connectivity for all saved connections in parallel.
+// Returns a map of connectionID → "online" | "offline".
+func (s *ConnectionService) PingAll() map[string]string {
+	conns, err := s.store.LoadConnections()
+	if err != nil {
+		return map[string]string{}
+	}
+
+	results := make(map[string]string, len(conns))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, c := range conns {
+		wg.Add(1)
+		go func(cfg driver.ConnectionConfig) {
+			defer wg.Done()
+
+			status := "online"
+			drv, err := driver.NewDriver(cfg.Type)
+			if err != nil {
+				status = "offline"
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				if err := drv.Connect(ctx, cfg); err != nil {
+					status = "offline"
+				} else {
+					if err := drv.Ping(ctx); err != nil {
+						status = "offline"
+					}
+					drv.Disconnect(ctx)
+				}
+			}
+
+			mu.Lock()
+			results[cfg.ID] = status
+			if status == "offline" {
+				s.mu.Lock()
+				s.disconnected[cfg.ID] = true
+				s.mu.Unlock()
+			} else {
+				s.mu.Lock()
+				delete(s.disconnected, cfg.ID)
+				s.mu.Unlock()
+			}
+			mu.Unlock()
+		}(c)
+	}
+
+	wg.Wait()
+	return results
+}
+
 // Connect establishes a live connection to a saved database
 func (s *ConnectionService) Connect(id string) error {
 	conns, err := s.store.LoadConnections()
@@ -132,6 +191,7 @@ func (s *ConnectionService) Connect(id string) error {
 	}
 	s.drivers[id] = drv
 	s.configs[id] = cfg
+	delete(s.disconnected, id)
 	s.mu.Unlock()
 
 	s.store.TouchConnection(id)
@@ -150,6 +210,7 @@ func (s *ConnectionService) Disconnect(id string) error {
 	err := drv.Disconnect(context.Background())
 	delete(s.drivers, id)
 	delete(s.configs, id)
+	s.disconnected[id] = true
 	return err
 }
 
@@ -163,4 +224,15 @@ func (s *ConnectionService) GetDriver(id string) (driver.Driver, error) {
 		return nil, fmt.Errorf("connection not active: %s", id)
 	}
 	return drv, nil
+}
+
+// GetConnectionType returns the database type for a connection (e.g. "mongodb", "sqlite")
+func (s *ConnectionService) GetConnectionType(id string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if cfg, ok := s.configs[id]; ok {
+		return string(cfg.Type)
+	}
+	return ""
 }

@@ -3,26 +3,26 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "soft-db-init.exe"
+name: "softdb"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.1.0"
+version: "1.0.0"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A soft-db-init application"
-vendor: "My Company"
-homepage: "https://wails.io"
+description: "Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift"
+vendor: "ZaneDev"
+homepage: "https://github.com/zane-tv/soft-db"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/soft-db-init.exe"
-    dst: "/usr/local/bin/soft-db-init.exe"
+  - src: "./bin/SoftDB"
+    dst: "/usr/local/bin/SoftDB"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/soft-db-init.exe.png"
-  - src: "./build/linux/soft-db-init.exe.desktop"
-    dst: "/usr/share/applications/soft-db-init.exe.desktop"
+    dst: "/usr/share/icons/hicolor/128x128/apps/SoftDB.png"
+  - src: "./build/linux/SoftDB.desktop"
+    dst: "/usr/share/applications/SoftDB.desktop"
 
 # Default dependencies for Debian 12/Ubuntu 22.04+ with WebKit 4.1
 depends:
@@ -49,19 +49,3 @@ scripts:
   # You can also add preremove, postremove if needed
   # preremove: "./build/linux/nfpm/scripts/preremove.sh"
   # postremove: "./build/linux/nfpm/scripts/postremove.sh"
-
-# replaces:
-#   - foobar
-# provides:
-#   - bar
-# depends:
-#   - gtk3
-#   - libwebkit2gtk
-# recommends:
-#   - whatever
-# suggests:
-#   - something-else
-# conflicts:
-#   - not-foo
-#   - not-bar
-# changelog: "changelog.yaml"

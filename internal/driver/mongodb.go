@@ -81,6 +81,74 @@ func (d *MongoDriver) Execute(ctx context.Context, query string) (*QueryResult, 
 
 	start := time.Now()
 
+	// Detect JSON array — execute each element sequentially
+	trimmed := strings.TrimSpace(query)
+	if strings.HasPrefix(trimmed, "[") {
+		return d.executeBatch(ctx, trimmed, start)
+	}
+
+	return d.executeSingle(ctx, trimmed, start)
+}
+
+// executeBatch handles a JSON array of queries, running each sequentially and merging results
+func (d *MongoDriver) executeBatch(ctx context.Context, query string, start time.Time) (*QueryResult, error) {
+	var cmds []bson.M
+	if err := bson.UnmarshalExtJSON([]byte(query), false, &cmds); err != nil {
+		return &QueryResult{Error: fmt.Sprintf("invalid query JSON array: %v", err), ExecutionTime: measureTime(start)}, nil
+	}
+
+	if len(cmds) == 0 {
+		return &QueryResult{Error: "empty query array", ExecutionTime: measureTime(start)}, nil
+	}
+
+	// Execute all queries sequentially and merge results
+	merged := &QueryResult{}
+	colSet := make(map[string]bool)
+
+	for i, cmd := range cmds {
+		cmdJSON, err := bson.MarshalExtJSON(cmd, false, false)
+		if err != nil {
+			merged.Error = fmt.Sprintf("query[%d]: failed to marshal: %v", i, err)
+			break
+		}
+
+		result, execErr := d.executeSingle(ctx, string(cmdJSON), start)
+		if execErr != nil {
+			return nil, execErr
+		}
+		if result.Error != "" {
+			collection, _ := cmd["collection"].(string)
+			merged.Error = fmt.Sprintf("query[%d] (%s): %s", i, collection, result.Error)
+			break
+		}
+
+		// Add __collection__ column to each row
+		collection, _ := cmd["collection"].(string)
+		for _, row := range result.Rows {
+			row["__collection__"] = collection
+			for k := range row {
+				colSet[k] = true
+			}
+		}
+		merged.Rows = append(merged.Rows, result.Rows...)
+		merged.RowCount += result.RowCount
+		merged.AffectedRows += result.AffectedRows
+	}
+
+	// Build union of all columns
+	if _, has := colSet["__collection__"]; has {
+		merged.Columns = append(merged.Columns, ColumnMeta{Name: "__collection__", Type: "string"})
+		delete(colSet, "__collection__")
+	}
+	for col := range colSet {
+		merged.Columns = append(merged.Columns, ColumnMeta{Name: col, Type: "mixed"})
+	}
+
+	merged.ExecutionTime = measureTime(start)
+	return merged, nil
+}
+
+func (d *MongoDriver) executeSingle(ctx context.Context, query string, start time.Time) (*QueryResult, error) {
 	// Parse the JSON query: { "collection": "name", "action": "find", "filter": {}, "limit": 100 }
 	var cmd bson.M
 	if err := bson.UnmarshalExtJSON([]byte(query), false, &cmd); err != nil {

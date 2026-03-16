@@ -50,6 +50,7 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"`
 	TokenType    string `json:"token_type"`
+	IDToken      string `json:"id_token,omitempty"`
 	Error        string `json:"error,omitempty"`
 	ErrorDesc    string `json:"error_description,omitempty"`
 }
@@ -204,7 +205,10 @@ func (o *OAuthService) GetAuthStatus() AuthStatus {
 		return AuthStatus{Status: "expired"}
 	}
 
-	return AuthStatus{Status: "logged_in"}
+	// Load email from settings
+	email, _ := o.store.GetSetting("oauth_email")
+
+	return AuthStatus{Status: "logged_in", Email: email}
 }
 
 // Logout clears stored tokens
@@ -296,8 +300,14 @@ func (o *OAuthService) exchangeCode(code, redirectURI, clientID string) error {
 		return fmt.Errorf("failed to save tokens: %w", err)
 	}
 
-	o.emitAuthStatus("logged_in", "")
-	slog.Info("OAuth login successful")
+	// Decode email from id_token JWT and save
+	email := decodeEmailFromJWT(tokenResp.IDToken)
+	if email != "" {
+		o.store.SetSetting("oauth_email", email)
+	}
+
+	o.emitAuthStatus("logged_in", email)
+	slog.Info("OAuth login successful", "email", email)
 	return nil
 }
 
@@ -346,6 +356,34 @@ func (o *OAuthService) refreshToken(refreshToken, clientID string) error {
 		ExpiresAt:    expiresAt.Format(time.RFC3339),
 		Provider:     "openai",
 	})
+}
+
+// decodeEmailFromJWT extracts email from a JWT id_token without signature verification.
+// This is safe for display-only purposes (the token was received over TLS from OpenAI).
+func decodeEmailFromJWT(idToken string) string {
+	if idToken == "" {
+		return ""
+	}
+	parts := strings.SplitN(idToken, ".", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	// Base64url decode the payload (add padding if needed)
+	payload := parts[1]
+	if mod := len(payload) % 4; mod != 0 {
+		payload += strings.Repeat("=", 4-mod)
+	}
+	decoded, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		return ""
+	}
+	return claims.Email
 }
 
 // emitAuthStatus sends auth status event to frontend

@@ -26,6 +26,7 @@ export function WorkspacePage({
         onSelect={onSelectTab}
         onClose={onCloseTab}
         onAdd={onAddTab}
+        onBackToHub={onBackToHub}
       />
       <div className="flex-1 overflow-hidden relative">
         {tabs.map((tab) => (
@@ -35,7 +36,6 @@ export function WorkspacePage({
           >
             <TableExplorer
               connectionId={tab.id}
-              onNavigateBack={onBackToHub}
             />
           </div>
         ))}

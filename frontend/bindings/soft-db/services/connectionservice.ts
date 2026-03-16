@@ -36,6 +36,13 @@ export function Disconnect(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * GetConnectionType returns the database type for a connection (e.g. "mongodb", "sqlite")
+ */
+export function GetConnectionType(id: string): $CancellablePromise<string> {
+    return $Call.ByID(3975198328, id);
+}
+
+/**
  * GetDriver returns the active driver for a connection (internal use)
  */
 export function GetDriver(id: string): $CancellablePromise<driver$0.Driver> {
@@ -48,6 +55,16 @@ export function GetDriver(id: string): $CancellablePromise<driver$0.Driver> {
 export function ListConnections(): $CancellablePromise<driver$0.ConnectionConfig[]> {
     return $Call.ByID(194740469).then(($result: any) => {
         return $$createType1($result);
+    });
+}
+
+/**
+ * PingAll checks connectivity for all saved connections in parallel.
+ * Returns a map of connectionID → "online" | "offline".
+ */
+export function PingAll(): $CancellablePromise<{ [_ in string]?: string }> {
+    return $Call.ByID(2649657663).then(($result: any) => {
+        return $$createType2($result);
     });
 }
 
@@ -70,3 +87,4 @@ export function TestConnection(cfg: driver$0.ConnectionConfig): $CancellableProm
 // Private type creation functions
 const $$createType0 = driver$0.ConnectionConfig.createFrom;
 const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $Create.Map($Create.Any, $Create.Any);

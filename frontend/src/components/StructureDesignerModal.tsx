@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { MongoSchemaEditor } from './MongoSchemaEditor'
 import {
   DndContext,
@@ -99,6 +99,23 @@ export function StructureDesignerModal({ open, onClose, connectionId, tableName,
       { id: newColId(), name: 'created_at', type: 'timestamptz', primaryKey: false, notNull: true, unique: false, defaultValue: 'now()', status: 'new' as const },
     ]
   })
+
+  // ─── Sync server columns when async data arrives ───
+  useEffect(() => {
+    if (!isNewTable && serverColumns.length > 0) {
+      setColumns(serverColumns.map((c) => ({
+        id: newColId(),
+        name: c.name,
+        type: c.type,
+        primaryKey: c.primaryKey,
+        notNull: !c.nullable,
+        unique: c.unique,
+        defaultValue: c.defaultValue || '',
+        status: 'existing' as const,
+        originalName: c.name,
+      })))
+    }
+  }, [serverColumns, isNewTable])
 
   // ─── DnD Sensors ───
   const sensors = useSensors(
@@ -358,6 +375,8 @@ function SortableColumnRow({ column, onUpdate, onRemove }: {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: column.id })
   const [typeOpen, setTypeOpen] = useState(false)
   const [typeSearch, setTypeSearch] = useState('')
+  const typeBtnRef = useRef<HTMLButtonElement>(null)
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -370,6 +389,14 @@ function SortableColumnRow({ column, onUpdate, onRemove }: {
     () => (typeSearch ? SQL_TYPES.filter((t) => t.includes(typeSearch.toLowerCase())) : SQL_TYPES),
     [typeSearch]
   )
+
+  const handleTypeOpen = useCallback(() => {
+    if (!typeOpen && typeBtnRef.current) {
+      const rect = typeBtnRef.current.getBoundingClientRect()
+      setDropdownPos({ top: rect.top, left: rect.left, width: rect.width })
+    }
+    setTypeOpen((prev) => !prev)
+  }, [typeOpen])
 
   const statusBorder =
     column.status === 'new'
@@ -409,9 +436,10 @@ function SortableColumnRow({ column, onUpdate, onRemove }: {
       </div>
 
       {/* Type Dropdown */}
-      <div className="col-span-3 relative">
+      <div className="col-span-3">
         <button
-          onClick={() => setTypeOpen(!typeOpen)}
+          ref={typeBtnRef}
+          onClick={handleTypeOpen}
           className="flex items-center justify-between w-full px-3 py-1.5 rounded bg-bg-hover/50 hover:bg-bg-hover border border-transparent hover:border-border-subtle text-emerald-400 font-mono text-xs transition-all"
         >
           <span>{column.type}</span>
@@ -420,8 +448,11 @@ function SortableColumnRow({ column, onUpdate, onRemove }: {
 
         {typeOpen && (
           <>
-            <div className="fixed inset-0 z-30" onClick={() => setTypeOpen(false)} />
-            <div className="absolute top-0 left-0 w-full z-40 bg-bg-hover border border-primary rounded-lg overflow-hidden animate-fade-in">
+            <div className="fixed inset-0 z-[60]" onClick={() => { setTypeOpen(false); setTypeSearch('') }} />
+            <div
+              className="fixed z-[70] bg-bg-hover border border-primary rounded-lg overflow-hidden animate-fade-in shadow-xl"
+              style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
+            >
               <div className="p-2 border-b border-border-subtle/50">
                 <div className="flex items-center gap-2 bg-bg-card px-2 py-1.5 rounded border border-border-subtle/50">
                   <span className="material-symbols-outlined text-[14px] text-text-muted">search</span>
@@ -434,7 +465,7 @@ function SortableColumnRow({ column, onUpdate, onRemove }: {
                   />
                 </div>
               </div>
-              <div className="max-h-[160px] overflow-y-auto">
+              <div className="max-h-[200px] overflow-y-auto">
                 {filteredTypes.map((t) => (
                   <button
                     key={t}

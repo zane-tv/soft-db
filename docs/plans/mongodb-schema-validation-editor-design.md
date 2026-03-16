@@ -1,5 +1,7 @@
 # MongoDB Schema Validation Editor — Design Document
 
+> **Status**: ✅ Implemented
+
 ## Problem
 `StructureDesignerModal` shows SQL-style schema editor (types: `uuid/timestamptz`, constraints: `PK/NN/UN`, DDL: `ALTER TABLE`) for MongoDB collections. MongoDB is schema-less and uses different concepts.
 

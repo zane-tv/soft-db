@@ -1,5 +1,7 @@
 # AI Chatbox Feature — Design Document
 
+> **Status**: ✅ Implemented
+
 > **Approach**: A — Full Backend Proxy  
 > **Model**: User-selectable (GPT-5.3-Codex, GPT-5.4, GPT-5 Mini, o4-mini, etc.)  
 > **Auth**: OAuth 2.0 PKCE via ChatGPT account  

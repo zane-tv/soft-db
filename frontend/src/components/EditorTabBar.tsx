@@ -77,24 +77,6 @@ export function EditorTabBar({
 
       {/* Actions */}
       <div className="flex items-center gap-0.5 px-2 shrink-0">
-        {onAIToggle && (
-          <button
-            onClick={onAIToggle}
-            className={`transition-colors p-1.5 rounded-md hover:bg-bg-hover/30 ${
-              aiPanelOpen ? 'text-primary' : 'text-text-muted/50 hover:text-text-main'
-            }`}
-            title={aiPanelOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
-          >
-            <span className="material-symbols-outlined text-[16px]">smart_toy</span>
-          </button>
-        )}
-        <button
-          onClick={onHistoryOpen}
-          className="text-text-muted/50 hover:text-text-main transition-colors p-1.5 rounded-md hover:bg-bg-hover/30"
-          title="Query History"
-        >
-          <span className="material-symbols-outlined text-[16px]">history</span>
-        </button>
         <button
           onClick={onSidebarToggle}
           className="text-text-muted/50 hover:text-text-main transition-colors p-1.5 rounded-md hover:bg-bg-hover/30"
@@ -104,6 +86,24 @@ export function EditorTabBar({
             {sidebarCollapsed ? 'left_panel_open' : 'left_panel_close'}
           </span>
         </button>
+        <button
+          onClick={onHistoryOpen}
+          className="text-text-muted/50 hover:text-text-main transition-colors p-1.5 rounded-md hover:bg-bg-hover/30"
+          title="Query History"
+        >
+          <span className="material-symbols-outlined text-[16px]">history</span>
+        </button>
+        {onAIToggle && (
+          <button
+            onClick={onAIToggle}
+            className={`transition-colors p-1.5 rounded-md hover:bg-bg-hover/30 ${
+              aiPanelOpen ? 'text-primary' : 'text-text-muted/50 hover:text-text-main'
+            }`}
+            title={aiPanelOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
+          >
+            <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+          </button>
+        )}
       </div>
     </div>
   )

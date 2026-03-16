@@ -1,13 +1,10 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A soft-db-init application
-# The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/soft-db-init.exe %u
+Name=SoftDB
+Comment=Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift
+Exec=/usr/local/bin/SoftDB %u
 Terminal=false
 Type=Application
-Icon=soft-db-init.exe
-Categories=Utility;
-StartupWMClass=soft-db-init.exe
-
- 
+Icon=SoftDB
+Categories=Development;
+StartupWMClass=SoftDB

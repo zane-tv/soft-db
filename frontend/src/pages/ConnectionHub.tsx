@@ -4,6 +4,7 @@ import {
   useDeleteConnection,
   useConnect,
   useDisconnect,
+  usePingAll,
 } from '@/hooks/useConnections'
 import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 import { ConnectionModal } from '@/components/ConnectionModal'
@@ -33,6 +34,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const [deletingConn, setDeletingConn] = useState<ConnectionConfig | null>(null)
 
   const { data: connections = [], isLoading } = useConnections()
+  const { isLoading: isPinging } = usePingAll()
   const connectMutation = useConnect()
   const disconnectMutation = useDisconnect()
   const deleteMutation = useDeleteConnection()
@@ -133,9 +135,11 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
               <p className="text-text-muted text-sm mt-1">
                 {isLoading
                   ? 'Loading...'
-                  : connections.length === 0
-                    ? 'No saved connections yet.'
-                    : `${connections.length} database${connections.length > 1 ? 's' : ''} configured.`}
+                  : isPinging
+                    ? `Checking ${connections.length} connection${connections.length > 1 ? 's' : ''}...`
+                    : connections.length === 0
+                      ? 'No saved connections yet.'
+                      : `${connections.length} database${connections.length > 1 ? 's' : ''} configured.`}
               </p>
             </div>
             <button

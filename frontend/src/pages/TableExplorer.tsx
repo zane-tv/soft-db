@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { useTables, useViews, useFunctions, useColumns, useExecuteQuery, useQueryHistory, useSwitchDatabase } from '@/hooks/useSchema'
 import { useConnections } from '@/hooks/useConnections'
 import { ExplorerSidebar } from '@/components/ExplorerSidebar'
@@ -28,7 +27,6 @@ interface QueryTab {
 
 interface TableExplorerProps {
   connectionId: string
-  onNavigateBack?: () => void
 }
 
 // ─── Module-level state cache (survives remounts) ───
@@ -45,8 +43,7 @@ const DEFAULT_TABS: QueryTab[] = [
   { id: '1', title: 'Query 1.sql', query: 'SELECT * FROM users\nWHERE status = \'active\'\nORDER BY created_at DESC\nLIMIT 50;', result: null, lastExecutedQuery: '', pkColumns: [] },
 ]
 
-export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerProps) {
-  const navigate = useNavigate()
+export function TableExplorer({ connectionId }: TableExplorerProps) {
 
   // Data hooks
   const { data: connections = [] } = useConnections()
@@ -219,7 +216,6 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
         collapsed={sidebarCollapsed}
         onTableClick={handleTableClick}
         onStructureOpen={setStructureTable}
-        onNavigateBack={onNavigateBack || (() => navigate({ to: '/' }))}
         onSettingsOpen={() => setSettingsOpen(true)}
         onCreateTable={() => setStructureTable('__new__')}
         onDatabaseSelect={(db) => {
@@ -293,6 +289,10 @@ export function TableExplorer({ connectionId, onNavigateBack }: TableExplorerPro
         connectionId={connectionId}
         visible={aiPanelOpen}
         onClose={() => setAiPanelOpen(false)}
+        onInsertToEditor={(code) => {
+          const current = activeTab.query
+          updateQuery(current ? current + '\n\n' + code : code)
+        }}
       />
 
       {/* Structure Designer Modal */}
