@@ -27,6 +27,13 @@ type Row = Record<string, unknown>
 const DEFAULT_COL_WIDTH = 180
 const MIN_COL_WIDTH = 80
 
+interface PaginationInfo {
+  page: number
+  pageSize: number
+  totalRows: number
+  totalPages: number
+}
+
 interface ResultsGridProps {
   queryResult: QueryResult | null
   query?: string
@@ -34,6 +41,9 @@ interface ResultsGridProps {
   pkColumns?: string[]
   columnInfos?: ColumnInfo[]
   onDataChange?: () => void
+  pagination?: PaginationInfo
+  onPageChange?: (page: number) => void
+  onPageSizeChange?: (size: number) => void
 }
 
 // ─── Custom filter function that routes to typed filters ───
@@ -46,7 +56,7 @@ const typedFilterFn: FilterFn<Row> = (row, columnId, filterValue) => {
 }
 
 // ─── Component ───
-export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColumns = [], columnInfos = [], onDataChange }: ResultsGridProps) {
+export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColumns = [], columnInfos = [], onDataChange, pagination, onPageChange, onPageSizeChange }: ResultsGridProps) {
   const resultContainerRef = useRef<HTMLDivElement>(null)
   const { settings } = useSettingsContext()
 
@@ -424,14 +434,68 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
         isApplying={editGrid.isApplying}
       />
 
-      {/* Pagination Footer */}
+      {/* Footer: Pagination or Static */}
       {queryResult && !queryResult.error && queryResult.rowCount > 0 && editGrid.pendingEditsCount === 0 && (
-        <div className="h-10 flex items-center justify-between px-4 border-t border-border-subtle/30 bg-bg-app text-xs text-text-muted shrink-0">
-          <span>Showing {tableRows.length} rows ({queryResult.executionTime}ms)</span>
-          <span className="text-text-muted/40 font-mono">
-            {queryResult.affectedRows > 0 && `${queryResult.affectedRows} affected`}
-          </span>
-        </div>
+        pagination ? (
+          <div className="h-10 flex items-center justify-between px-4 border-t border-border-subtle/30 bg-bg-app text-xs text-text-muted shrink-0">
+            {/* Page navigation */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => onPageChange?.(1)}
+                disabled={pagination.page <= 1}
+                className="px-1.5 py-1 rounded hover:bg-bg-hover/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="First page"
+              >«</button>
+              <button
+                onClick={() => onPageChange?.(pagination.page - 1)}
+                disabled={pagination.page <= 1}
+                className="px-1.5 py-1 rounded hover:bg-bg-hover/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Previous page"
+              >‹</button>
+              <span className="px-2 text-text-main font-medium">
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
+              <button
+                onClick={() => onPageChange?.(pagination.page + 1)}
+                disabled={pagination.page >= pagination.totalPages}
+                className="px-1.5 py-1 rounded hover:bg-bg-hover/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Next page"
+              >›</button>
+              <button
+                onClick={() => onPageChange?.(pagination.totalPages)}
+                disabled={pagination.page >= pagination.totalPages}
+                className="px-1.5 py-1 rounded hover:bg-bg-hover/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Last page"
+              >»</button>
+            </div>
+
+            {/* Page size selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-text-muted/60">Rows per page:</span>
+              <select
+                value={pagination.pageSize}
+                onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
+                className="bg-bg-hover/30 border border-border-subtle/30 rounded px-1.5 py-0.5 text-xs text-text-main outline-none cursor-pointer"
+              >
+                {[25, 50, 100, 250, 500].map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Total rows */}
+            <span className="text-text-muted/60">
+              Total: {pagination.totalRows.toLocaleString()} rows
+            </span>
+          </div>
+        ) : (
+          <div className="h-10 flex items-center justify-between px-4 border-t border-border-subtle/30 bg-bg-app text-xs text-text-muted shrink-0">
+            <span>Showing {tableRows.length} rows ({queryResult.executionTime}ms)</span>
+            <span className="text-text-muted/40 font-mono">
+              {queryResult.affectedRows > 0 && `${queryResult.affectedRows} affected`}
+            </span>
+          </div>
+        )
       )}
 
       {/* SQL Review Modal */}

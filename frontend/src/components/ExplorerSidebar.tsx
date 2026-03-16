@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useColumns, useHasMultiDB, useDatabases, useTablesForDB } from '@/hooks/useSchema'
+import { TableContextMenu } from './TableContextMenu'
 
 // ─── Types ───
 interface ExplorerSidebarProps {
@@ -18,6 +19,8 @@ interface ExplorerSidebarProps {
   onSettingsOpen?: () => void
   onCreateTable?: () => void
   onDatabaseSelect?: (database: string) => void
+  onViewFullData?: (name: string) => void
+  onAttachToAI?: (name: string) => void
 }
 
 export function ExplorerSidebar({
@@ -36,7 +39,16 @@ export function ExplorerSidebar({
   onSettingsOpen,
   onCreateTable,
   onDatabaseSelect,
+  onViewFullData,
+  onAttachToAI,
 }: ExplorerSidebarProps) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tableName: string } | null>(null)
+
+  const handleTableContextMenu = (e: React.MouseEvent, tableName: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, tableName })
+  }
   const { data: hasMultiDB } = useHasMultiDB(connectionId)
 
   return (
@@ -64,6 +76,7 @@ export function ExplorerSidebar({
             onTableClick={onTableClick}
             onStructureOpen={onStructureOpen}
             onDatabaseSelect={onDatabaseSelect}
+            onTableContextMenu={handleTableContextMenu}
           />
         ) : (
           <>
@@ -76,6 +89,7 @@ export function ExplorerSidebar({
                   active={selectedTable === t.name}
                   onClick={() => onTableClick(t.name)}
                   onSettings={() => onStructureOpen(t.name)}
+                  onContextMenu={(e) => handleTableContextMenu(e, t.name)}
                 />
               ))}
             </TreeSection>
@@ -105,6 +119,20 @@ export function ExplorerSidebar({
           <span>Settings</span>
         </button>
       </div>
+
+      {/* Table Context Menu */}
+      {contextMenu && (
+        <TableContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          tableName={contextMenu.tableName}
+          onViewFullData={() => onViewFullData?.(contextMenu.tableName)}
+          onAttachToAI={() => onAttachToAI?.(contextMenu.tableName)}
+          onOpenStructure={() => onStructureOpen(contextMenu.tableName)}
+          onCopyName={() => navigator.clipboard.writeText(contextMenu.tableName)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </aside>
   )
 }
@@ -117,6 +145,7 @@ function MultiDBTree({
   onTableClick,
   onStructureOpen,
   onDatabaseSelect,
+  onTableContextMenu,
 }: {
   connectionId: string
   selectedTable: string | null
@@ -124,6 +153,7 @@ function MultiDBTree({
   onTableClick: (name: string) => void
   onStructureOpen: (name: string) => void
   onDatabaseSelect?: (database: string) => void
+  onTableContextMenu?: (e: React.MouseEvent, tableName: string) => void
 }) {
   const { data: databases = [], isLoading } = useDatabases(connectionId)
 
@@ -148,6 +178,7 @@ function MultiDBTree({
           onSelect={() => onDatabaseSelect?.(db.name)}
           onTableClick={onTableClick}
           onStructureOpen={onStructureOpen}
+          onTableContextMenu={onTableContextMenu}
         />
       ))}
     </TreeSection>
@@ -163,6 +194,7 @@ function DatabaseTreeItem({
   onSelect,
   onTableClick,
   onStructureOpen,
+  onTableContextMenu,
 }: {
   name: string
   connectionId: string
@@ -171,6 +203,7 @@ function DatabaseTreeItem({
   onSelect?: () => void
   onTableClick: (name: string) => void
   onStructureOpen: (name: string) => void
+  onTableContextMenu?: (e: React.MouseEvent, tableName: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const { data: tables = [], isLoading } = useTablesForDB(connectionId, expanded ? name : '')
@@ -223,6 +256,7 @@ function DatabaseTreeItem({
                 active={selectedTable === t.name}
                 onClick={() => onTableClick(t.name)}
                 onSettings={() => onStructureOpen(t.name)}
+                onContextMenu={onTableContextMenu ? (e) => onTableContextMenu(e, t.name) : undefined}
               />
             ))
           ) : (
@@ -289,12 +323,14 @@ function TableTreeItem({
   active,
   onClick,
   onSettings,
+  onContextMenu,
 }: {
   name: string
   connectionId: string
   active?: boolean
   onClick?: () => void
   onSettings?: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const { data: columns, isLoading } = useColumns(connectionId, expanded ? name : '')
@@ -302,6 +338,7 @@ function TableTreeItem({
   return (
     <li>
       <div
+        onContextMenu={onContextMenu}
         className={`w-full flex items-center gap-0.5 px-1 py-1.5 text-[12px] rounded-md border-l-2 transition-all duration-150 group ${
           active
             ? 'text-text-main bg-bg-hover border-primary'

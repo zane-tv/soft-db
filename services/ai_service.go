@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -190,6 +191,9 @@ func (a *AIService) buildMessages(connectionID, userMessage, model string) (stri
 	// System prompt becomes "instructions"
 	instructions := a.buildSystemPrompt(connectionID)
 
+	// Expand @table_name mentions in the user message
+	userMessage = a.expandTableMentions(connectionID, userMessage)
+
 	// Build input array (user/assistant messages only, no system)
 	var input []codexMessage
 
@@ -199,10 +203,57 @@ func (a *AIService) buildMessages(connectionID, userMessage, model string) (stri
 		if msg.Role == "system" {
 			continue
 		}
-		input = append(input, codexMessage{Role: msg.Role, Content: msg.Content})
+		if msg.Role == "user" {
+			// Also expand @mentions in historical messages
+			input = append(input, codexMessage{Role: msg.Role, Content: a.expandTableMentions(connectionID, msg.Content)})
+		} else {
+			input = append(input, codexMessage{Role: msg.Role, Content: msg.Content})
+		}
 	}
 
 	return instructions, input, nil
+}
+
+// expandTableMentions replaces @table_name patterns with full table schema info
+var tableMentionRe = regexp.MustCompile(`@(\w+)`)
+
+func (a *AIService) expandTableMentions(connectionID, message string) string {
+	// Quick check to avoid regex on messages without @
+	if !strings.Contains(message, "@") {
+		return message
+	}
+
+	// Get list of actual table names for validation
+	tables, err := a.schemaService.GetTables(connectionID)
+	if err != nil {
+		return message
+	}
+	tableSet := make(map[string]bool, len(tables))
+	for _, t := range tables {
+		tableSet[t.Name] = true
+	}
+
+	return tableMentionRe.ReplaceAllStringFunc(message, func(match string) string {
+		tableName := match[1:] // strip @
+		if !tableSet[tableName] {
+			return match // not a known table, leave as-is
+		}
+
+		cols, err := a.schemaService.GetColumns(connectionID, tableName)
+		if err != nil || len(cols) == 0 {
+			return fmt.Sprintf("[Table: %s]", tableName)
+		}
+
+		var parts []string
+		for _, c := range cols {
+			p := fmt.Sprintf("%s %s", c.Name, c.Type)
+			if c.PrimaryKey {
+				p += " PK"
+			}
+			parts = append(parts, p)
+		}
+		return fmt.Sprintf("[Table: %s (%s)]", tableName, strings.Join(parts, ", "))
+	})
 }
 
 // buildSystemPrompt creates the system prompt with DB schema context

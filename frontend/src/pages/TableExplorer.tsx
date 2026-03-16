@@ -13,6 +13,7 @@ import { AIChatPanel } from '@/components/AIChatPanel'
 import { useSettingsContext } from '@/hooks/useSettings'
 import { detectEditableTable } from '@/hooks/useEditableGrid'
 import * as EditService from '../../bindings/soft-db/services/editservice'
+import * as QueryService from '../../bindings/soft-db/services/queryservice'
 import type { QueryResult, TableInfo, FunctionInfo, ColumnInfo } from '../../bindings/soft-db/internal/driver/models'
 
 // ─── Types ───
@@ -23,6 +24,12 @@ interface QueryTab {
   result: QueryResult | null
   lastExecutedQuery: string
   pkColumns: string[]
+  isFullView?: boolean
+  fullViewTable?: string
+  fullViewPage?: number
+  fullViewPageSize?: number
+  fullViewTotalRows?: number
+  fullViewTotalPages?: number
 }
 
 interface TableExplorerProps {
@@ -72,6 +79,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [aiPrefill, setAiPrefill] = useState('')
 
   // ─── Sync state to cache on changes ───
   useEffect(() => {
@@ -96,10 +104,11 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
 
   const resetResize = useCallback(() => setEditorHeightPx(null), [])
 
-  // Fetch columns for the selected table (for AddRecordModal)
-  const { data: columnInfos = [] } = useColumns(connectionId, selectedTable || '')
-
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
+
+  // Fetch columns — use fullView table name if in full view mode
+  const columnsTable = activeTab?.isFullView ? (activeTab.fullViewTable || '') : (selectedTable || '')
+  const { data: columnInfos = [] } = useColumns(connectionId, columnsTable)
 
   // ─── Query Execution ───
   const handleExecute = useCallback(async () => {
@@ -196,6 +205,136 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     }
   }, [updateQuery, settings.defaultLimit, conn?.type])
 
+  // ── Full View ──
+  const handleViewFullData = useCallback(async (tableName: string) => {
+    // Check if a full view tab for this table already exists
+    const existingTab = tabs.find(t => t.isFullView && t.fullViewTable === tableName)
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      return
+    }
+
+    const tabId = String(Date.now())
+    const pageSize = 25
+    const page = 1
+
+    // Create the tab immediately with loading state
+    const newTab: QueryTab = {
+      id: tabId,
+      title: tableName,
+      query: '',
+      result: null,
+      lastExecutedQuery: '',
+      pkColumns: [],
+      isFullView: true,
+      fullViewTable: tableName,
+      fullViewPage: page,
+      fullViewPageSize: pageSize,
+      fullViewTotalRows: 0,
+      fullViewTotalPages: 1,
+    }
+    setTabs(prev => [...prev, newTab])
+    setActiveTabId(tabId)
+    setSelectedTable(tableName)
+
+    try {
+      // Fetch paginated data + PK columns in parallel
+      const [paginatedResult, pks] = await Promise.all([
+        QueryService.ExecutePaginatedQuery(connectionId, tableName, page, pageSize),
+        EditService.GetTablePrimaryKey(connectionId, tableName).catch(() => [] as string[]),
+      ])
+
+      if (paginatedResult) {
+        setTabs(prev => prev.map(t => t.id === tabId ? {
+          ...t,
+          result: {
+            columns: paginatedResult.columns,
+            rows: paginatedResult.rows,
+            rowCount: paginatedResult.rowCount,
+            affectedRows: paginatedResult.affectedRows,
+            executionTime: paginatedResult.executionTime,
+            error: paginatedResult.error || '',
+          } as QueryResult,
+          pkColumns: pks || [],
+          fullViewTotalRows: paginatedResult.totalRows,
+          fullViewTotalPages: paginatedResult.totalPages,
+        } : t))
+      }
+    } catch (err) {
+      setTabs(prev => prev.map(t => t.id === tabId ? {
+        ...t,
+        result: {
+          columns: [], rows: [], rowCount: 0, affectedRows: 0, executionTime: 0,
+          error: err instanceof Error ? err.message : String(err),
+        } as QueryResult,
+      } : t))
+    }
+  }, [connectionId, tabs])
+
+  // ── Full View Page Change ──
+  const handlePageChange = useCallback(async (newPage: number) => {
+    if (!activeTab?.isFullView || !activeTab.fullViewTable) return
+    const tableName = activeTab.fullViewTable
+    const pageSize = activeTab.fullViewPageSize || 25
+
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, fullViewPage: newPage } : t))
+
+    try {
+      const result = await QueryService.ExecutePaginatedQuery(connectionId, tableName, newPage, pageSize)
+      if (result) {
+        setTabs(prev => prev.map(t => t.id === activeTabId ? {
+          ...t,
+          result: {
+            columns: result.columns, rows: result.rows,
+            rowCount: result.rowCount, affectedRows: result.affectedRows,
+            executionTime: result.executionTime, error: result.error || '',
+          } as QueryResult,
+          fullViewPage: result.page,
+          fullViewTotalRows: result.totalRows,
+          fullViewTotalPages: result.totalPages,
+        } : t))
+      }
+    } catch { /* keep current data */ }
+  }, [activeTab, activeTabId, connectionId])
+
+  // ── Full View Page Size Change ──
+  const handlePageSizeChange = useCallback(async (newSize: number) => {
+    if (!activeTab?.isFullView || !activeTab.fullViewTable) return
+    const tableName = activeTab.fullViewTable
+
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, fullViewPageSize: newSize, fullViewPage: 1 } : t))
+
+    try {
+      const result = await QueryService.ExecutePaginatedQuery(connectionId, tableName, 1, newSize)
+      if (result) {
+        setTabs(prev => prev.map(t => t.id === activeTabId ? {
+          ...t,
+          result: {
+            columns: result.columns, rows: result.rows,
+            rowCount: result.rowCount, affectedRows: result.affectedRows,
+            executionTime: result.executionTime, error: result.error || '',
+          } as QueryResult,
+          fullViewPage: 1,
+          fullViewPageSize: newSize,
+          fullViewTotalRows: result.totalRows,
+          fullViewTotalPages: result.totalPages,
+        } : t))
+      }
+    } catch { /* keep current data */ }
+  }, [activeTab, activeTabId, connectionId])
+
+  // ── Attach to AI Chat ──
+  const handleAttachToAI = useCallback((tableName: string) => {
+    setAiPanelOpen(true)
+    setAiPrefill(`@${tableName} `)
+  }, [])
+
+  // ── Full View Refresh (for edit mode onDataChange) ──
+  const handleFullViewRefresh = useCallback(async () => {
+    if (!activeTab?.isFullView || !activeTab.fullViewTable) return
+    await handlePageChange(activeTab.fullViewPage || 1)
+  }, [activeTab, handlePageChange])
+
   // Editor height style
   const editorStyle = editorHeightPx != null
     ? { height: `${editorHeightPx}px` }
@@ -223,12 +362,65 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
           setSelectedDatabase(db)
           switchDbMutation.mutate({ connectionId, database: db })
         }}
+        onViewFullData={handleViewFullData}
+        onAttachToAI={handleAttachToAI}
       />
 
       {/* Main Content */}
       <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Editor Pane (resizable) */}
-        <div className="flex flex-col bg-bg-editor relative shrink-0" style={editorStyle}>
+        {/* Editor Pane — hidden for Full View tabs */}
+        {!activeTab.isFullView && (
+          <>
+            <div className="flex flex-col bg-bg-editor relative shrink-0" style={editorStyle}>
+              <EditorTabBar
+                tabs={tabs}
+                activeTabId={activeTabId}
+                sidebarCollapsed={sidebarCollapsed}
+                onTabSelect={setActiveTabId}
+                onTabClose={closeTab}
+                onTabAdd={addTab}
+                onHistoryOpen={() => setHistoryOpen(true)}
+                onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+                onAIToggle={() => setAiPanelOpen(!aiPanelOpen)}
+                aiPanelOpen={aiPanelOpen}
+              />
+
+              {/* Code Editor */}
+              <div className="flex-1 overflow-hidden relative">
+                <SqlEditor
+                  value={activeTab?.query || ''}
+                  onChange={updateQuery}
+                  onExecute={handleExecute}
+                  tables={tables as TableInfo[]}
+                  views={views as string[]}
+                  functions={functions as FunctionInfo[]}
+                  connectionId={connectionId}
+                />
+
+                {/* Floating Run Button */}
+                <div className="absolute bottom-4 right-4 z-10">
+                  <button
+                    onClick={handleExecute}
+                    disabled={isExecuting || !activeTab?.query.trim()}
+                    className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-hover hover:brightness-110 text-white px-5 py-2.5 rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span className={`material-symbols-outlined text-[20px] ${isExecuting ? 'animate-spin' : ''}`}>
+                      {isExecuting ? 'sync' : 'play_arrow'}
+                    </span>
+                    <span className="font-medium text-sm">{isExecuting ? 'Running...' : 'Run Query'}</span>
+                    <kbd className="bg-white/20 text-white/90 text-[10px] px-1.5 py-0.5 rounded ml-1 font-mono">{navigator.platform?.includes('Mac') ? '⌘E' : 'Ctrl+E'}</kbd>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Resize Handle */}
+            <ResizeHandle onResize={handleResize} onDoubleClick={resetResize} />
+          </>
+        )}
+
+        {/* Full View Tab Bar (when in full view mode) */}
+        {activeTab.isFullView && (
           <EditorTabBar
             tabs={tabs}
             activeTabId={activeTabId}
@@ -241,47 +433,24 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
             onAIToggle={() => setAiPanelOpen(!aiPanelOpen)}
             aiPanelOpen={aiPanelOpen}
           />
+        )}
 
-          {/* Code Editor */}
-          <div className="flex-1 overflow-hidden relative">
-            <SqlEditor
-              value={activeTab?.query || ''}
-              onChange={updateQuery}
-              onExecute={handleExecute}
-              tables={tables as TableInfo[]}
-              views={views as string[]}
-              functions={functions as FunctionInfo[]}
-              connectionId={connectionId}
-            />
-
-            {/* Floating Run Button */}
-            <div className="absolute bottom-4 right-4 z-10">
-              <button
-                onClick={handleExecute}
-                disabled={isExecuting || !activeTab?.query.trim()}
-                className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-hover hover:brightness-110 text-white px-5 py-2.5 rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span className={`material-symbols-outlined text-[20px] ${isExecuting ? 'animate-spin' : ''}`}>
-                  {isExecuting ? 'sync' : 'play_arrow'}
-                </span>
-                <span className="font-medium text-sm">{isExecuting ? 'Running...' : 'Run Query'}</span>
-                <kbd className="bg-white/20 text-white/90 text-[10px] px-1.5 py-0.5 rounded ml-1 font-mono">{navigator.platform?.includes('Mac') ? '⌘E' : 'Ctrl+E'}</kbd>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Resize Handle */}
-        <ResizeHandle onResize={handleResize} onDoubleClick={resetResize} />
-
-        {/* Results Pane (fills remaining space) */}
+        {/* Results Pane */}
         <ResultsGrid
           queryResult={activeTab.result}
           query={activeTab.lastExecutedQuery}
           connectionId={connectionId}
           pkColumns={activeTab.pkColumns}
           columnInfos={columnInfos as ColumnInfo[]}
-          onDataChange={handleExecute}
+          onDataChange={activeTab.isFullView ? handleFullViewRefresh : handleExecute}
+          pagination={activeTab.isFullView ? {
+            page: activeTab.fullViewPage || 1,
+            pageSize: activeTab.fullViewPageSize || 25,
+            totalRows: activeTab.fullViewTotalRows || 0,
+            totalPages: activeTab.fullViewTotalPages || 1,
+          } : undefined}
+          onPageChange={activeTab.isFullView ? handlePageChange : undefined}
+          onPageSizeChange={activeTab.isFullView ? handlePageSizeChange : undefined}
         />
       </main>
 
@@ -294,6 +463,8 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
           const current = activeTab.query
           updateQuery(current ? current + '\n\n' + code : code)
         }}
+        prefillText={aiPrefill}
+        onPrefillConsumed={() => setAiPrefill('')}
       />
 
       {/* Structure Designer Modal */}

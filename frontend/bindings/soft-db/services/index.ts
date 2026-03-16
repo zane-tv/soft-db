@@ -26,5 +26,6 @@ export {
     CellUpdateResult,
     DeleteResult,
     InsertResult,
-    ModelInfo
+    ModelInfo,
+    PaginatedResult
 } from "./models.js";
