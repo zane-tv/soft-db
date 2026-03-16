@@ -37,18 +37,15 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-      - name: Build binary
-        run: wails3 task windows:build
-
-      - name: Create NSIS Installer
-        run: wails3 task windows:create:nsis:installer
+      - name: Build & Create NSIS Installer
+        run: wails3 task windows:package
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoftDB-windows-amd64
           path: |
-            bin/*-installer.exe
+            build/windows/nsis/*-installer.exe
             bin/*.exe
 
   build-macos:
