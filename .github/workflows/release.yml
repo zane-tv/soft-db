@@ -85,20 +85,33 @@ jobs:
         env:
           GOARCH: ${{ matrix.arch }}
 
-      - name: Create tar.gz
+      - name: Create DMG
         run: |
-          cd bin
-          if [ -d "SoftDB.app" ]; then
-            tar -czf SoftDB-darwin-${{ matrix.arch }}.tar.gz SoftDB.app
+          APP_NAME="SoftDB"
+          DMG_NAME="SoftDB-darwin-${{ matrix.arch }}.dmg"
+          STAGING_DIR=$(mktemp -d)
+          
+          if [ -d "bin/${APP_NAME}.app" ]; then
+            cp -R "bin/${APP_NAME}.app" "${STAGING_DIR}/"
           else
-            tar -czf SoftDB-darwin-${{ matrix.arch }}.tar.gz SoftDB
+            mkdir -p "${STAGING_DIR}/${APP_NAME}.app/Contents/MacOS"
+            cp "bin/${APP_NAME}" "${STAGING_DIR}/${APP_NAME}.app/Contents/MacOS/"
           fi
+          
+          # Create Applications symlink for drag-to-install
+          ln -s /Applications "${STAGING_DIR}/Applications"
+          
+          # Create DMG
+          hdiutil create -volname "${APP_NAME}" \
+            -srcfolder "${STAGING_DIR}" \
+            -ov -format UDZO \
+            "bin/${DMG_NAME}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoftDB-darwin-${{ matrix.arch }}
-          path: bin/SoftDB-darwin-${{ matrix.arch }}.tar.gz
+          path: bin/SoftDB-darwin-${{ matrix.arch }}.dmg
 
   build-linux:
     runs-on: ubuntu-22.04
