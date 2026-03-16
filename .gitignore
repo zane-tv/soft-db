@@ -10,3 +10,5 @@ softdb.exe
 .serena
 .agent
 dist
+docs/plans
+./dev.sh

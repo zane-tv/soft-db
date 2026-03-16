@@ -22,9 +22,10 @@ interface ConnectionTabBarProps {
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onAdd: () => void
+  onBackToHub?: () => void
 }
 
-export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd }: ConnectionTabBarProps) {
+export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd, onBackToHub }: ConnectionTabBarProps) {
   const handleClose = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     onClose(id)
@@ -34,6 +35,19 @@ export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd }: C
     <div className="flex items-center h-[34px] bg-bg-app/80 border-b border-border-subtle/40 shrink-0 overflow-x-auto"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
+      {/* Home / Back button */}
+      {onBackToHub && (
+        <button
+          onClick={onBackToHub}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="flex items-center gap-1.5 px-2.5 h-full shrink-0 text-text-muted/70 hover:text-text-main hover:bg-bg-hover/20 transition-colors border-r border-border-subtle/30"
+          title="Back to connections"
+        >
+          <img src="/softdb-logo.png" alt="SoftDB" className="size-4 rounded-sm" />
+          <span className="text-[11px] font-medium">Home</span>
+        </button>
+      )}
+
       {tabs.map((tab) => {
         const isActive = tab.id === activeId
         const db = DB_ICONS[tab.type] || { icon: 'database', color: '#888' }

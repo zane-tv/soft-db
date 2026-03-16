@@ -1,15 +1,17 @@
 {
 	"fixed": {
-		"file_version": "0.1.0"
+		"file_version": "1.0.0"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "0.1.0",
-			"CompanyName": "My Company",
-			"FileDescription": "A soft-db-init application",
-			"LegalCopyright": "© 2026, My Company",
-			"ProductName": "My Product",
-			"Comments": "This is a comment"
+			"ProductVersion": "1.0.0",
+			"CompanyName": "ZaneDev",
+			"FileDescription": "Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift",
+			"LegalCopyright": "© 2025-2026, ZaneDev",
+			"ProductName": "SoftDB",
+			"Comments": "A modern, cross-platform database management tool supporting PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, and Redshift.",
+			"OriginalFilename": "SoftDB.exe",
+			"InternalName": "SoftDB"
 		}
 	}
 }

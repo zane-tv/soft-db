@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useConnections, useConnect } from '@/hooks/useConnections'
+import { useConnections, useConnect, usePingAll } from '@/hooks/useConnections'
 import { ConnectionModal } from '@/components/ConnectionModal'
 import { DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 
@@ -24,6 +24,7 @@ interface ConnectionPickerModalProps {
 export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: ConnectionPickerModalProps) {
   const { data: connections = [] } = useConnections()
   const connectMutation = useConnect()
+  usePingAll() // auto-check connectivity
   const [search, setSearch] = useState('')
   const [connecting, setConnecting] = useState<string | null>(null)
   const [showNewModal, setShowNewModal] = useState(false)
@@ -163,11 +164,17 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
                           </span>
+                        ) : status === 'offline' ? (
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500/70" />
                         ) : (
                           <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-muted/30" />
                         )}
-                        <span className={`text-[10px] font-medium ${status === 'connected' ? 'text-emerald-500' : 'text-text-muted/60'}`}>
-                          {status === 'connected' ? 'Connected' : 'Idle'}
+                        <span className={`text-[10px] font-medium ${
+                          status === 'connected' ? 'text-emerald-500'
+                            : status === 'offline' ? 'text-red-400/80'
+                            : 'text-text-muted/60'
+                        }`}>
+                          {status === 'connected' ? 'Connected' : status === 'offline' ? 'Offline' : 'Idle'}
                         </span>
                       </div>
 

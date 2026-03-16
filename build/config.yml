@@ -5,13 +5,13 @@ version: '3'
 
 # This information is used to generate the build assets.
 info:
-  companyName: "Zane"
+  companyName: "ZaneDev"
   productName: "SoftDB"
   productIdentifier: "dev.zane.softdb"
   description: "Modern Database Management Tool"
-  copyright: "(c) 2025-2026, Zane"
+  copyright: "(c) 2025-2026, ZaneDev"
   comments: "A modern, cross-platform database management tool supporting PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, and Redshift."
-  version: "0.1.0"
+  version: "1.0.0"
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension
   #                               # If not set and Assets.car exists, defaults to "appicon"

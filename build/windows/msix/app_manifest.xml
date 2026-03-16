@@ -8,15 +8,15 @@
   IgnorableNamespaces="uap3">
   
   <Identity 
-    Name="com.example.softdbinit"
-    Publisher="CN=My Company"
-    Version="0.1.0.0" 
+    Name="dev.zane.softdb"
+    Publisher="CN=ZaneDev"
+    Version="1.0.0.0" 
     ProcessorArchitecture="x64" />
   
   <Properties>
-    <DisplayName>My Product</DisplayName>
-    <PublisherDisplayName>My Company</PublisherDisplayName>
-    <Description>A soft-db-init application</Description>
+    <DisplayName>SoftDB</DisplayName>
+    <PublisherDisplayName>ZaneDev</PublisherDisplayName>
+    <Description>Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   
@@ -29,10 +29,10 @@
   </Resources>
   
   <Applications>
-    <Application Id="com.example.softdbinit" Executable="soft-db-init.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="dev.zane.softdb" Executable="SoftDB.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="My Product"
-        Description="A soft-db-init application"
+        DisplayName="SoftDB"
+        Description="Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
@@ -41,7 +41,7 @@
       </uap:VisualElements>
       
       <Extensions>
-        <desktop:Extension Category="windows.fullTrustProcess" Executable="soft-db-init.exe" />
+        <desktop:Extension Category="windows.fullTrustProcess" Executable="SoftDB.exe" />
         
         
       </Extensions>

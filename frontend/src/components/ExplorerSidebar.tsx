@@ -15,7 +15,6 @@ interface ExplorerSidebarProps {
   collapsed: boolean
   onTableClick: (name: string) => void
   onStructureOpen: (name: string) => void
-  onNavigateBack: () => void
   onSettingsOpen?: () => void
   onCreateTable?: () => void
   onDatabaseSelect?: (database: string) => void
@@ -34,7 +33,6 @@ export function ExplorerSidebar({
   collapsed,
   onTableClick,
   onStructureOpen,
-  onNavigateBack,
   onSettingsOpen,
   onCreateTable,
   onDatabaseSelect,
@@ -46,23 +44,14 @@ export function ExplorerSidebar({
       className={`${collapsed ? 'w-0' : 'w-[220px]'} flex-shrink-0 flex flex-col border-r border-border-subtle/30 bg-bg-app transition-all duration-300 overflow-hidden`}
     >
       {/* DB Header */}
-      <div className="h-10 flex items-center px-2.5 border-b border-border-subtle/20 shrink-0">
-        <button
-          onClick={onNavigateBack}
-          className="flex items-center gap-2 w-full px-2 py-1 hover:bg-bg-hover/30 rounded-md transition-colors group"
-        >
-          <div className="size-6 rounded-md bg-primary/10 flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary text-[14px]">database</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-[12px] font-semibold text-text-main truncate block leading-tight">{connName || 'Database'}</span>
-            <span className="text-[10px] text-text-muted/60 font-mono flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-success" />
-              {connType || 'Unknown'}
-            </span>
-          </div>
-          <span className="material-symbols-outlined text-text-muted/40 group-hover:text-text-main transition-colors text-[14px]">chevron_left</span>
-        </button>
+      <div className="h-10 flex items-center gap-2 px-3.5 border-b border-border-subtle/20 shrink-0">
+        <div className="flex-1 min-w-0">
+          <span className="text-[12px] font-semibold text-text-main truncate block leading-tight">{connName || 'Database'}</span>
+          <span className="text-[10px] text-text-muted/60 font-mono flex items-center gap-1">
+            <span className="w-1 h-1 rounded-full bg-success" />
+            {connType || 'Unknown'}
+          </span>
+        </div>
       </div>
 
       {/* Object Tree */}

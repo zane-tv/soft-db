@@ -58,6 +58,7 @@ export function useAuth() {
   return {
     isLoggedIn: authStatus.data?.status === 'logged_in',
     isExpired: authStatus.data?.status === 'expired',
+    email: authStatus.data?.email ?? '',
     authStatus,
     login,
     logout,

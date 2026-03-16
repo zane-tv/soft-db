@@ -1,14 +1,20 @@
-import { useState, useRef, useEffect, type FormEvent } from 'react'
+import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react'
 import { useAIChat, useAuth, useModelSelection, type AIError } from '@/hooks/useAIChat'
 
 interface AIChatPanelProps {
   connectionId: string
   visible: boolean
   onClose: () => void
+  onInsertToEditor?: (code: string) => void
 }
 
-export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps) {
-  const { isLoggedIn, login, isExpired } = useAuth()
+const MIN_WIDTH = 280
+const MAX_WIDTH = 600
+const DEFAULT_WIDTH = 340
+const STORAGE_KEY = 'ai-panel-width'
+
+export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor }: AIChatPanelProps) {
+  const { isLoggedIn, login, logout, isExpired, email } = useAuth()
   const { models, selectedModel, setModel } = useModelSelection(connectionId)
   const {
     messages, streamingContent, isStreaming,
@@ -17,8 +23,13 @@ export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps
   } = useAIChat(connectionId)
 
   const [input, setInput] = useState('')
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    return saved ? Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, parseInt(saved, 10))) : DEFAULT_WIDTH
+  })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const isResizing = useRef(false)
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -30,11 +41,54 @@ export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps
     if (visible) inputRef.current?.focus()
   }, [visible])
 
+  // Resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    const startX = e.clientX
+    const startWidth = panelWidth
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return
+      const delta = startX - ev.clientX // moving left = wider
+      const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta))
+      setPanelWidth(newWidth)
+    }
+
+    const onUp = () => {
+      isResizing.current = false
+      localStorage.setItem(STORAGE_KEY, panelWidth.toString())
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [panelWidth])
+
+  // Save width on change
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, panelWidth.toString())
+  }, [panelWidth])
+
+  // Auto-resize textarea
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+    const ta = e.target
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
+  }
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     const msg = input.trim()
     if (!msg || !canSend) return
     setInput('')
+    if (inputRef.current) inputRef.current.style.height = 'auto'
     sendMessage(msg, selectedModel)
   }
 
@@ -45,18 +99,24 @@ export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps
     }
   }
 
-  if (!visible) return null
+  const handleSuggestionClick = (text: string) => {
+    setInput(text)
+    inputRef.current?.focus()
+  }
 
   return (
-    <div className="ai-chat-panel">
+    <div
+      className={`ai-chat-panel ${visible ? 'ai-chat-panel-open' : 'ai-chat-panel-closed'}`}
+      style={{ width: visible ? panelWidth : 0 }}
+    >
+      <div className="ai-chat-panel-inner" style={{ minWidth: panelWidth }}>
+      {/* Resize handle */}
+      <div className="ai-resize-handle" onMouseDown={handleResizeStart} />
+
       {/* Header */}
       <div className="ai-chat-header">
         <div className="ai-chat-header-left">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12" />
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 2v4M22 12h-4M12 22v-4M2 12h4" />
-          </svg>
+          <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
           <span className="ai-chat-title">AI Assistant</span>
         </div>
         <div className="ai-chat-header-actions">
@@ -90,17 +150,29 @@ export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps
             </select>
           )}
           <button className="ai-icon-btn" onClick={() => clearChat()} title="Clear chat">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-            </svg>
+            <span className="material-symbols-outlined text-[14px]">delete_sweep</span>
           </button>
           <button className="ai-icon-btn" onClick={onClose} title="Close panel">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
+            <span className="material-symbols-outlined text-[14px]">close</span>
           </button>
         </div>
       </div>
+
+      {/* Account bar */}
+      {isLoggedIn && (
+        <div className="ai-account-bar">
+          <div className="ai-account-info">
+            <span className="ai-account-dot" />
+            <span className="ai-account-email" title={email}>{email || 'Connected'}</span>
+          </div>
+          <button className="ai-logout-btn" onClick={() => logout.mutate()} title="Sign out">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+            </svg>
+            Sign out
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="ai-chat-body">
@@ -119,16 +191,26 @@ export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps
             {/* Messages */}
             <div className="ai-messages">
               {messages.length === 0 && !streamingContent && (
-                <WelcomeMessage />
+                <WelcomeMessage onSuggestionClick={handleSuggestionClick} />
               )}
 
               {messages.map((msg, i) => (
-                <MessageBubble key={msg.id ?? i} role={msg.role} content={msg.content} />
+                <MessageBubble
+                  key={msg.id ?? i}
+                  role={msg.role}
+                  content={msg.content}
+                  onInsertToEditor={onInsertToEditor}
+                />
               ))}
 
               {/* Streaming response */}
               {streamingContent && (
-                <MessageBubble role="assistant" content={streamingContent} isStreaming />
+                <MessageBubble
+                  role="assistant"
+                  content={streamingContent}
+                  isStreaming
+                  onInsertToEditor={onInsertToEditor}
+                />
               )}
 
               <div ref={messagesEndRef} />
@@ -140,7 +222,7 @@ export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps
                 ref={inputRef}
                 className="ai-chat-input"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask about your database..."
                 rows={1}
@@ -167,6 +249,7 @@ export function AIChatPanel({ connectionId, visible, onClose }: AIChatPanelProps
           </>
         )}
       </div>
+      </div>{/* .ai-chat-panel-inner */}
     </div>
   )
 }
@@ -210,45 +293,197 @@ function ErrorBanner({ error, onDismiss }: { error: AIError; onDismiss: () => vo
       <div className="ai-error-content">
         <span className="ai-error-icon">{isQuota ? '⚠️' : isRateLimit ? '⏳' : '❌'}</span>
         <span className="ai-error-text">{error.message}</span>
-        {isQuota && (
-          <a
-            href="#"
-            className="ai-error-link"
-            onClick={(e) => { e.preventDefault(); window.open('https://platform.openai.com/account/billing', '_blank') }}
-          >
-            Manage plan →
-          </a>
-        )}
       </div>
       <button className="ai-error-dismiss" onClick={onDismiss}>×</button>
     </div>
   )
 }
 
-function MessageBubble({ role, content, isStreaming }: { role: string; content: string; isStreaming?: boolean }) {
+// ─── Code Block Parsing ───
+
+interface ContentBlock {
+  type: 'text' | 'code'
+  content: string
+  language?: string
+}
+
+function parseCodeBlocks(content: string): ContentBlock[] {
+  const blocks: ContentBlock[] = []
+  const regex = /```(\w*)\n?([\s\S]*?)```/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(content)) !== null) {
+    // Text before code block
+    if (match.index > lastIndex) {
+      blocks.push({ type: 'text', content: content.slice(lastIndex, match.index) })
+    }
+    // Code block
+    blocks.push({
+      type: 'code',
+      language: match[1] || 'sql',
+      content: match[2].trim(),
+    })
+    lastIndex = match.index + match[0].length
+  }
+
+  // Remaining text
+  if (lastIndex < content.length) {
+    blocks.push({ type: 'text', content: content.slice(lastIndex) })
+  }
+
+  return blocks.length > 0 ? blocks : [{ type: 'text', content }]
+}
+
+function CodeBlock({ code, language, onInsertToEditor }: {
+  code: string
+  language?: string
+  onInsertToEditor?: (code: string) => void
+}) {
+  const [copied, setCopied] = useState(false)
+  const [inserted, setInserted] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleInsert = () => {
+    onInsertToEditor?.(code)
+    setInserted(true)
+    setTimeout(() => setInserted(false), 2000)
+  }
+
+  return (
+    <div className="ai-code-block">
+      <div className="ai-code-header">
+        <span className="ai-code-lang">{language || 'code'}</span>
+        <div className="ai-code-actions">
+          {onInsertToEditor && (
+            <button className="ai-code-action-btn" onClick={handleInsert} title="Insert to Editor">
+              {inserted ? '✓ Inserted' : '⬇ Insert'}
+            </button>
+          )}
+          <button className="ai-code-action-btn" onClick={handleCopy} title="Copy">
+            {copied ? '✓ Copied' : '📋 Copy'}
+          </button>
+        </div>
+      </div>
+      <pre className="ai-code-content"><code>{code}</code></pre>
+    </div>
+  )
+}
+
+// ─── Markdown Formatting ───
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function formatMarkdown(text: string): string {
+  let html = escapeHtml(text)
+
+  // Headings: #### h4, ### h3, ## h2, # h1 (must process longer prefixes first)
+  html = html.replace(/^#### (.+)$/gm, '<h4 class="ai-heading ai-h4">$1</h4>')
+  html = html.replace(/^### (.+)$/gm, '<h3 class="ai-heading ai-h3">$1</h3>')
+  html = html.replace(/^## (.+)$/gm, '<h2 class="ai-heading ai-h2">$1</h2>')
+  html = html.replace(/^# (.+)$/gm, '<h1 class="ai-heading ai-h1">$1</h1>')
+
+  // Inline code: `code`
+  html = html.replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>')
+  // Bold: **text**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  // Italic: *text* (but not inside **)
+  html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
+  // List items: lines starting with - 
+  html = html.replace(/^- (.+)$/gm, '<span class="ai-list-item">• $1</span>')
+  // Numbered list: lines starting with 1. 2. etc
+  html = html.replace(/^(\d+)\. (.+)$/gm, '<span class="ai-list-item">$1. $2</span>')
+
+  return html
+}
+
+// ─── SVG Icons ───
+
+function AIIcon({ size = 16 }: { size?: number }) {
+  return (
+    <span className="material-symbols-outlined" style={{ fontSize: size }}>auto_awesome</span>
+  )
+}
+
+function UserIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M20 21a8 8 0 1 0-16 0" />
+    </svg>
+  )
+}
+
+function MessageBubble({ role, content, isStreaming, onInsertToEditor }: {
+  role: string
+  content: string
+  isStreaming?: boolean
+  onInsertToEditor?: (code: string) => void
+}) {
+  const blocks = parseCodeBlocks(content)
+
   return (
     <div className={`ai-message ai-message-${role}`}>
-      <div className="ai-message-avatar">
-        {role === 'assistant' ? '🤖' : '👤'}
+      <div className={`ai-message-avatar ${role === 'assistant' ? 'ai-avatar-assistant' : 'ai-avatar-user'}`}>
+        {role === 'assistant' ? <AIIcon size={15} /> : <UserIcon size={15} />}
       </div>
       <div className="ai-message-content">
-        <pre className="ai-message-text">{content}</pre>
+        {blocks.map((block, i) => (
+          block.type === 'code' ? (
+            <CodeBlock
+              key={i}
+              code={block.content}
+              language={block.language}
+              onInsertToEditor={onInsertToEditor}
+            />
+          ) : block.content.trim() ? (
+            <div
+              key={i}
+              className="ai-message-text"
+              dangerouslySetInnerHTML={{ __html: formatMarkdown(block.content.trim()) }}
+            />
+          ) : null
+        ))}
         {isStreaming && <span className="ai-cursor-blink">▊</span>}
       </div>
     </div>
   )
 }
 
-function WelcomeMessage() {
+function WelcomeMessage({ onSuggestionClick }: { onSuggestionClick: (text: string) => void }) {
+  const suggestions = [
+    { emoji: '📊', text: 'Show me all tables' },
+    { emoji: '🔗', text: 'Write a JOIN query for...' },
+    { emoji: '⚡', text: 'Optimize this query' },
+  ]
+
   return (
     <div className="ai-welcome">
-      <div className="ai-welcome-icon">🤖</div>
+      <div className="ai-welcome-icon">
+        <AIIcon size={36} />
+      </div>
       <h3>Database AI Assistant</h3>
       <p>Ask questions about your schema, write SQL queries, or get optimization tips.</p>
       <div className="ai-welcome-suggestions">
-        <span className="ai-suggestion">💡 "Show me all tables"</span>
-        <span className="ai-suggestion">💡 "Write a JOIN query for..."</span>
-        <span className="ai-suggestion">💡 "Optimize this query"</span>
+        {suggestions.map((s, i) => (
+          <button
+            key={i}
+            className="ai-suggestion"
+            onClick={() => onSuggestionClick(s.text)}
+          >
+            {s.emoji} {s.text}
+          </button>
+        ))}
       </div>
     </div>
   )

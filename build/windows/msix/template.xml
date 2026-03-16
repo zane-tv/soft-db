@@ -8,27 +8,27 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="soft-db-init.exe"
+        Path="SoftDB.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\My Company\My Product">
+        InstallLocation="C:\Program Files\ZaneDev\SoftDB">
     </Installer>
     <PackageInformation
-        PackageName="My Product"
-        PackageDisplayName="My Product"
-        PublisherName="CN=My Company"
-        PublisherDisplayName="My Company"
-        Version="0.1.0.0"
-        PackageDescription="A soft-db-init application">
+        PackageName="SoftDB"
+        PackageDisplayName="SoftDB"
+        PublisherName="CN=ZaneDev"
+        PublisherDisplayName="ZaneDev"
+        Version="1.0.0.0"
+        PackageDescription="Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
         </Capabilities>
         <Applications>
             <Application
-                Id="com.example.softdbinit"
-                Description="A soft-db-init application"
-                DisplayName="My Product"
-                ExecutableName="soft-db-init.exe"
+                Id="dev.zane.softdb"
+                Description="Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift"
+                DisplayName="SoftDB"
+                ExecutableName="SoftDB.exe"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>My Product</DisplayName>
-            <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>A soft-db-init application</Description>
+            <DisplayName>SoftDB</DisplayName>
+            <PublisherDisplayName>ZaneDev</PublisherDisplayName>
+            <Description>Modern Database Management Tool — MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redshift</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="soft-db-init.msix" />
+    <SaveLocation PackagePath="SoftDB.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

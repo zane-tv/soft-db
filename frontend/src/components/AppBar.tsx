@@ -39,9 +39,7 @@ export function AppBar() {
     <div className="app-bar flex items-center justify-between px-3 bg-bg-app border-b border-border-subtle/50 shrink-0 z-50">
       {/* Left: Logo + App Name */}
       <div className="flex items-center gap-2.5 pl-1">
-        <div className="size-6 rounded-md bg-blue-500/20 flex items-center justify-center">
-          <span className="material-symbols-outlined text-blue-400 text-[16px]">database</span>
-        </div>
+        <img src="/softdb-logo.png" alt="SoftDB" className="size-5 rounded" />
         <span className="text-[13px] font-semibold text-text-main/80 tracking-tight select-none">SoftDB</span>
       </div>
 

@@ -15,6 +15,22 @@ export function useConnections() {
   })
 }
 
+/** Ping all connections on mount to check reachability, then refresh the list */
+export function usePingAll() {
+  const qc = useQueryClient()
+  return useQuery({
+    queryKey: ['connections', 'pingAll'] as const,
+    queryFn: async () => {
+      const results = await ConnectionService.PingAll()
+      // After pinging, refresh the connections list to pick up new statuses
+      qc.invalidateQueries({ queryKey: connectionKeys.list() })
+      return results
+    },
+    staleTime: 30_000, // don't re-ping more often than every 30s
+    refetchOnWindowFocus: false,
+  })
+}
+
 export function useSaveConnection() {
   const qc = useQueryClient()
   return useMutation({
