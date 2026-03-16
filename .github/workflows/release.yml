@@ -52,15 +52,8 @@ jobs:
             bin/*.exe
 
   build-macos:
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            runner: macos-13    # x86_64 runner
-          - arch: arm64
-            runner: macos-latest # ARM64 (M1/M2) runner
-    runs-on: ${{ matrix.runner }}
-    name: Build macOS ${{ matrix.arch }}
+    runs-on: macos-latest
+    name: Build macOS
 
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +81,7 @@ jobs:
       - name: Create DMG
         run: |
           APP_NAME="SoftDB"
-          DMG_NAME="SoftDB-darwin-${{ matrix.arch }}.dmg"
+          DMG_NAME="SoftDB-darwin-arm64.dmg"
           STAGING_DIR=$(mktemp -d)
           
           if [ -d "bin/${APP_NAME}.app" ]; then
@@ -110,8 +103,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SoftDB-darwin-${{ matrix.arch }}
-          path: bin/SoftDB-darwin-${{ matrix.arch }}.dmg
+          name: SoftDB-darwin-arm64
+          path: bin/SoftDB-darwin-arm64.dmg
 
   build-linux:
     runs-on: ubuntu-22.04
