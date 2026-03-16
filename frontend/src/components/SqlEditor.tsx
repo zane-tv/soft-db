@@ -14,6 +14,7 @@ interface SqlEditorProps {
   views?: string[]
   functions?: { name: string }[]
   connectionId?: string
+  connType?: string
 }
 
 // ─── Theme Definitions ───
@@ -144,6 +145,7 @@ export function SqlEditor({
   views = [],
   functions = [],
   connectionId,
+  connType,
 }: SqlEditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof Monaco | null>(null)
@@ -158,17 +160,20 @@ export function SqlEditor({
   const viewsRef = useRef(views)
   const functionsRef = useRef(functions)
   const connectionIdRef = useRef(connectionId)
+  const connTypeRef = useRef(connType)
   const { settings } = useSettingsContext()
+  const settingsRef = useRef(settings)
+  const isMongo = connType === 'mongodb'
+
+  // Editor language: json for MongoDB, sql for others
+  const editorLanguage = isMongo ? 'json' : 'sql'
 
   // Keep refs in sync with latest props (no re-registration needed)
   useEffect(() => { tablesRef.current = tables }, [tables])
   useEffect(() => { viewsRef.current = views }, [views])
   useEffect(() => { functionsRef.current = functions }, [functions])
-  useEffect(() => {
-    connectionIdRef.current = connectionId
-    columnCacheRef.current.clear()
-    pendingFetchRef.current.clear()
-  }, [connectionId])
+  useEffect(() => { connectionIdRef.current = connectionId; connTypeRef.current = connType; columnCacheRef.current.clear(); pendingFetchRef.current.clear() }, [connectionId, connType])
+  useEffect(() => { settingsRef.current = settings }, [settings])
 
   // Sync theme with app theme
   useEffect(() => {
@@ -191,9 +196,9 @@ export function SqlEditor({
     disposablesRef.current.forEach((d) => d.dispose())
     disposablesRef.current = []
 
-    const disposable = monaco.languages.registerCompletionItemProvider('sql', {
+    const provider: Monaco.languages.CompletionItemProvider = {
       triggerCharacters: ['.'],
-      provideCompletionItems: (model, position) => {
+      provideCompletionItems: (model: Monaco.editor.ITextModel, position: Monaco.Position) => {
         // ── Read latest data from refs ──
         const currentTables = tablesRef.current
         const currentViews = viewsRef.current
@@ -292,7 +297,26 @@ export function SqlEditor({
           })
         })
 
-        const snippets = [
+        // ── Snippets (contextual: SQL vs MongoDB) ──
+        // Determine mode from both connType ref AND the model's language
+        const modelLang = model.getLanguageId()
+        const isMongoConn = connTypeRef.current === 'mongodb' || modelLang === 'json'
+        const isSqlConn = !isMongoConn
+
+        // Skip SQL suggestions when editor is in json mode, and vice versa
+        if (isMongoConn && modelLang === 'sql') return { suggestions: [] }
+        if (isSqlConn && modelLang === 'json') return { suggestions: [] }
+        const snippets = isMongoConn ? [
+          { label: 'find', insert: '{ "collection": "${1:name}", "action": "find", "filter": { $2 }, "limit": 100 }', detail: 'Find documents' },
+          { label: 'find all', insert: '{ "collection": "${1:name}", "action": "find", "filter": {} }', detail: 'Find all documents' },
+          { label: 'count', insert: '{ "collection": "${1:name}", "action": "count", "filter": { $2 } }', detail: 'Count documents' },
+          { label: 'insert', insert: '{ "collection": "${1:name}", "action": "insert", "document": { $2 } }', detail: 'Insert document' },
+          { label: 'delete', insert: '{ "collection": "${1:name}", "action": "delete", "filter": { $2 } }', detail: 'Delete documents' },
+          { label: 'filter $gt', insert: '"${1:field}": { "$$gt": ${2:value} }', detail: 'Greater than' },
+          { label: 'filter $lt', insert: '"${1:field}": { "$$lt": ${2:value} }', detail: 'Less than' },
+          { label: 'filter $in', insert: '"${1:field}": { "$$in": [$2] }', detail: 'In array' },
+          { label: 'filter $regex', insert: '"${1:field}": { "$$regex": "${2:pattern}" }', detail: 'Regex match' },
+        ] : [
           { label: 'SELECT', insert: 'SELECT $1\nFROM $2\nWHERE $3;', detail: 'Select query' },
           { label: 'INSERT INTO', insert: 'INSERT INTO $1 ($2)\nVALUES ($3);', detail: 'Insert row' },
           { label: 'UPDATE', insert: 'UPDATE $1\nSET $2 = $3\nWHERE $4;', detail: 'Update rows' },
@@ -318,9 +342,13 @@ export function SqlEditor({
 
         return { suggestions }
       },
-    })
+    }
 
-    disposablesRef.current.push(disposable)
+    // Register on sql, javascript, and json so completions work in all language modes
+    const d1 = monaco.languages.registerCompletionItemProvider('sql', provider)
+    const d2 = monaco.languages.registerCompletionItemProvider('javascript', provider)
+    const d3 = monaco.languages.registerCompletionItemProvider('json', provider)
+    disposablesRef.current.push(d1, d2, d3)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])  // ← empty deps: register ONCE, data comes from refs
 
@@ -343,10 +371,37 @@ export function SqlEditor({
     // ── Manual suggest trigger ──
     // quickSuggestions may not fire reliably in some WebView environments (e.g., WebKit2GTK on Linux).
     // We manually trigger the suggest widget on every content change when the cursor is on a word.
-    editor.onDidChangeModelContent(() => {
+    editor.onDidChangeModelContent((e) => {
       const model = editor.getModel()
       const pos = editor.getPosition()
       if (!model || !pos) return
+
+      // ── Auto-uppercase SQL keywords ──
+      if (settingsRef.current.autoUppercase && connTypeRef.current !== 'mongodb') {
+        const SQL_KEYWORDS = /^(select|from|where|insert|into|update|set|delete|drop|alter|create|table|index|join|inner|outer|left|right|cross|on|and|or|not|in|is|null|like|between|exists|having|group|order|by|asc|desc|limit|offset|as|distinct|union|all|case|when|then|else|end|values|truncate|begin|commit|rollback)$/i
+        for (const change of e.changes) {
+          const typed = change.text
+          // Trigger on space, newline, tab, or semicolon after keyword
+          if (/^[\s;,()]$/.test(typed) && change.range.startLineNumber === change.range.endLineNumber) {
+            const lineContent = model.getLineContent(change.range.startLineNumber)
+            const textBefore = lineContent.substring(0, change.range.startColumn - 1)
+            const match = textBefore.match(/(\w+)$/)
+            if (match && SQL_KEYWORDS.test(match[1]) && match[1] !== match[1].toUpperCase()) {
+              const wordStart = change.range.startColumn - match[1].length
+              const range = new monacoRef.current!.Range(
+                change.range.startLineNumber, wordStart,
+                change.range.startLineNumber, change.range.startColumn
+              )
+              editor.executeEdits('autoUppercase', [{
+                range,
+                text: match[1].toUpperCase(),
+              }])
+            }
+          }
+        }
+      }
+
+      // ── Manual suggest trigger ──
       const word = model.getWordUntilPosition(pos)
       // Only trigger when user is actively typing a word (not on space/newline/symbol)
       if (word.word.length >= 1) {
@@ -377,7 +432,7 @@ export function SqlEditor({
   return (
     <Editor
       height="100%"
-      language="sql"
+      language={editorLanguage}
       value={value}
       onChange={(v) => onChange(v || '')}
       onMount={handleMount}
@@ -402,7 +457,7 @@ export function SqlEditor({
         quickSuggestionsDelay: 0,
         wordBasedSuggestions: 'off',
         suggest: {
-          showKeywords: true,
+          showKeywords: !isMongo,
           showSnippets: true,
           showFunctions: true,
           showStructs: true,   // TableInfo (CompletionItemKind.Struct)

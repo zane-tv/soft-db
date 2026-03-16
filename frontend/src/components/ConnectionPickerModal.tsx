@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useConnections, useConnect, usePingAll } from '@/hooks/useConnections'
+import { useSettings } from '@/hooks/useSettings'
+import { useTranslation } from '@/lib/i18n'
 import { ConnectionModal } from '@/components/ConnectionModal'
 import { DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 
@@ -23,6 +25,8 @@ interface ConnectionPickerModalProps {
 
 export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: ConnectionPickerModalProps) {
   const { data: connections = [] } = useConnections()
+  const { data: settingsData } = useSettings()
+  const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
   const connectMutation = useConnect()
   usePingAll() // auto-check connectivity
   const [search, setSearch] = useState('')
@@ -71,7 +75,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
           {/* Header */}
           <div className="px-5 pt-5 pb-3 shrink-0">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-text-main">Open Connection</h2>
+              <h2 className="text-base font-bold text-text-main">{t('connection.open')}</h2>
               <button
                 onClick={onClose}
                 className="p-1 rounded-md text-text-muted hover:text-text-main hover:bg-white/5 transition-colors"
@@ -87,7 +91,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
               </span>
               <input
                 className="w-full rounded-lg border border-border-subtle bg-bg-main py-2.5 pl-9 pr-3 text-sm text-text-main placeholder:text-text-muted focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                placeholder="Search connections..."
+                placeholder={t('connection.searchPlaceholder')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
@@ -99,7 +103,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
           <div className="flex-1 overflow-y-auto px-5 pb-5">
             {filtered.length === 0 && (
               <div className="text-center py-12 text-text-muted text-sm">
-                No connections found
+                {t('connection.noResults')}
               </div>
             )}
             <div className="grid grid-cols-3 gap-3">
@@ -130,7 +134,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
                     {/* Open badge */}
                     {isOpen && (
                       <span className="absolute top-2.5 right-2.5 text-[8px] font-bold text-primary bg-primary/15 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                        Open
+                        {t('connection.open.badge')}
                       </span>
                     )}
 
@@ -174,7 +178,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
                             : status === 'offline' ? 'text-red-400/80'
                             : 'text-text-muted/60'
                         }`}>
-                          {status === 'connected' ? 'Connected' : status === 'offline' ? 'Offline' : 'Idle'}
+                          {status === 'connected' ? t('connection.status.connected') : status === 'offline' ? t('connection.status.offline') : t('connection.status.idle')}
                         </span>
                       </div>
 
@@ -197,7 +201,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
                   </span>
                 </div>
                 <span className="text-xs font-medium text-text-muted group-hover:text-text-main transition-colors">
-                  New Connection
+                  {t('connection.new')}
                 </span>
               </button>
             </div>

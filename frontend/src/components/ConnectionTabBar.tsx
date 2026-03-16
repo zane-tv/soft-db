@@ -1,4 +1,6 @@
 import { useCallback } from 'react'
+import { useSettings } from '@/hooks/useSettings'
+import { useTranslation } from '@/lib/i18n'
 
 // ─── DB Icon Mapping ───
 const DB_ICONS: Record<string, { icon: string; color: string }> = {
@@ -26,6 +28,8 @@ interface ConnectionTabBarProps {
 }
 
 export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd, onBackToHub }: ConnectionTabBarProps) {
+  const { data: settings } = useSettings()
+  const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
   const handleClose = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     onClose(id)
@@ -44,7 +48,7 @@ export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd, onB
           title="Back to connections"
         >
           <img src="/softdb-logo.png" alt="SoftDB" className="size-4 rounded-sm" />
-          <span className="text-[11px] font-medium">Home</span>
+          <span className="text-[11px] font-medium">{t('nav.home')}</span>
         </button>
       )}
 
