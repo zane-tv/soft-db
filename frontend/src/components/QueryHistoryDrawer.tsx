@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { useQueryHistory, useSnippets, useSaveSnippet } from '@/hooks/useSchema'
+import { useQueryHistory, useSnippets, useSaveSnippet, useDeleteSnippet } from '@/hooks/useSchema'
 import type { HistoryEntry, Snippet } from '../../bindings/soft-db/internal/store/models'
 
 // ─── SQL keyword highlighting ───
@@ -59,6 +59,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
   const { data: history = [] } = useQueryHistory(connectionId)
   const { data: snippets = [] } = useSnippets(connectionId)
   const saveMutation = useSaveSnippet()
+  const deleteMutation = useDeleteSnippet()
 
   const [tab, setTab] = useState<'history' | 'saved'>('history')
   const [search, setSearch] = useState('')
@@ -94,7 +95,14 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
   const grouped = useMemo(() => groupByDate(filteredHistory), [filteredHistory])
 
   // Set of saved query texts for quick lookup
-  const savedQueryTexts = useMemo(() => new Set((snippets as Snippet[]).map((s) => s.queryText)), [snippets])
+  // Map of saved query texts -> snippet id for quick lookup
+  const savedSnippetMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const s of snippets as Snippet[]) {
+      map.set(s.queryText, s.id)
+    }
+    return map
+  }, [snippets])
 
   // ─── Actions ───
   const copyToClipboard = useCallback((text: string) => {
@@ -112,6 +120,10 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
     } as Snippet)
   }, [connectionId, saveMutation])
 
+  const unsaveSnippet = useCallback((snippetId: number) => {
+    deleteMutation.mutate({ id: snippetId, connectionId })
+  }, [connectionId, deleteMutation])
+
   if (!open) return null
 
   return (
@@ -120,7 +132,7 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
       <div className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40" onClick={onClose} />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 w-[400px] bg-bg-card border-l border-border-subtle flex flex-col z-50 animate-slide-in-right">
+      <div className="fixed right-0 top-[40px] bottom-0 w-[400px] bg-bg-card border-l border-border-subtle flex flex-col z-50 animate-slide-in-right">
         {/* ─── Header ─── */}
         <div className="flex flex-col border-b border-border-subtle bg-bg-card shrink-0">
           {/* Title & Close */}
@@ -194,16 +206,20 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
                     <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{group.label}</span>
                   </div>
                   {/* History Items */}
-                  {group.entries.map((entry) => (
-                    <HistoryItem
-                      key={entry.id}
-                      entry={entry}
-                      onUse={() => onUseQuery?.(entry.queryText)}
-                      onCopy={() => copyToClipboard(entry.queryText)}
-                      onSave={() => saveAsSnippet(entry.queryText)}
-                      isSaved={savedQueryTexts.has(entry.queryText)}
-                    />
-                  ))}
+                  {group.entries.map((entry) => {
+                    const snippetId = savedSnippetMap.get(entry.queryText)
+                    return (
+                      <HistoryItem
+                        key={entry.id}
+                        entry={entry}
+                        onUse={() => onUseQuery?.(entry.queryText)}
+                        onCopy={() => copyToClipboard(entry.queryText)}
+                        onSave={() => saveAsSnippet(entry.queryText)}
+                        onUnsave={snippetId != null ? () => unsaveSnippet(snippetId) : undefined}
+                        isSaved={snippetId != null}
+                      />
+                    )
+                  })}
                 </div>
               ))
             ) : (
@@ -241,11 +257,12 @@ export function QueryHistoryDrawer({ open, onClose, connectionId, connName, conn
 }
 
 // ─── History Item ───
-function HistoryItem({ entry, onUse, onCopy, onSave, isSaved = false }: {
+function HistoryItem({ entry, onUse, onCopy, onSave, onUnsave, isSaved = false }: {
   entry: HistoryEntry
   onUse: () => void
   onCopy: () => void
   onSave: () => void
+  onUnsave?: () => void
   isSaved?: boolean
 }) {
   const time = new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -270,38 +287,50 @@ function HistoryItem({ entry, onUse, onCopy, onSave, isSaved = false }: {
   return (
     <div
       onClick={onUse}
-      className="group relative bg-bg-app hover:bg-bg-hover border border-border-subtle hover:border-bg-hover rounded-lg p-3 transition-all cursor-pointer mb-2"
+      className={`group relative bg-bg-app hover:bg-bg-hover border rounded-lg p-3 pb-4 transition-all cursor-pointer mb-2 ${
+        isSaved ? 'border-primary/30' : 'border-border-subtle hover:border-bg-hover'
+      }`}
     >
       {/* Header: Time & Status */}
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-mono text-text-muted group-hover:text-text-main transition-colors">{time}</span>
-        {statusBadge}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs font-mono text-text-muted group-hover:text-text-main transition-colors shrink-0">{time}</span>
+          {isSaved && (
+            <span className="material-symbols-outlined text-primary text-[12px] shrink-0" title="Saved">bookmark</span>
+          )}
+        </div>
+        <div className="shrink-0 ml-2">{statusBadge}</div>
       </div>
       {/* Code Block */}
       <div className="font-mono text-[13px] leading-relaxed text-text-main/90 break-all line-clamp-3 opacity-90 group-hover:opacity-100">
         {highlightSQL(entry.queryText)}
       </div>
       {/* Hover Actions */}
-      {/* Saved indicator */}
-      {isSaved && (
-        <div className="absolute right-3 top-3">
-          <span className="material-symbols-outlined text-primary text-[14px]">bookmark_added</span>
-        </div>
-      )}
-      <div className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+      <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1.5">
         <button
-          onClick={(e) => { e.stopPropagation(); if (!isSaved) onSave() }}
-          className={`p-1.5 rounded-md border border-border-subtle transition-colors ${isSaved ? 'bg-primary/20 text-primary cursor-default' : 'bg-bg-card hover:bg-primary text-text-muted hover:text-text-main'}`}
-          title={isSaved ? 'Already saved' : 'Save as Snippet'}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (isSaved && onUnsave) {
+              onUnsave()
+            } else if (!isSaved) {
+              onSave()
+            }
+          }}
+          className={`p-1 rounded-md border transition-colors ${
+            isSaved
+              ? 'bg-primary/20 text-primary border-primary/30 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30'
+              : 'bg-bg-card hover:bg-primary text-text-muted hover:text-text-main border-border-subtle'
+          }`}
+          title={isSaved ? 'Remove from Saved' : 'Save as Snippet'}
         >
-          <span className="material-symbols-outlined text-[16px]">{isSaved ? 'bookmark_added' : 'bookmark'}</span>
+          <span className="material-symbols-outlined text-[14px]">{isSaved ? 'bookmark_remove' : 'bookmark_add'}</span>
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onCopy() }}
-          className="bg-bg-card hover:bg-primary text-text-muted hover:text-text-main p-1.5 rounded-md border border-border-subtle transition-colors"
+          className="bg-bg-card hover:bg-primary text-text-muted hover:text-text-main p-1 rounded-md border border-border-subtle transition-colors"
           title="Copy to Clipboard"
         >
-          <span className="material-symbols-outlined text-[16px]">content_copy</span>
+          <span className="material-symbols-outlined text-[14px]">content_copy</span>
         </button>
       </div>
     </div>

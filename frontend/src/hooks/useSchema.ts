@@ -129,8 +129,12 @@ export function useSaveSnippet() {
 }
 
 export function useDeleteSnippet() {
+  const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => QueryService.DeleteSnippet(id),
+    mutationFn: ({ id }: { id: number; connectionId: string }) => QueryService.DeleteSnippet(id),
+    onSuccess: (_data, { connectionId }) => {
+      queryClient.invalidateQueries({ queryKey: ['snippets', connectionId] })
+    },
   })
 }
 

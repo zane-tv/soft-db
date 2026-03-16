@@ -2,6 +2,9 @@ package services
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -23,6 +26,163 @@ func NewQueryService(cs *ConnectionService, ss *SettingsService, s *store.Store)
 		settingsService: ss,
 		store:           s,
 	}
+}
+
+// PaginatedResult extends QueryResult with total rows and pagination info
+type PaginatedResult struct {
+	*driver.QueryResult
+	TotalRows  int64 `json:"totalRows"`
+	Page       int   `json:"page"`
+	PageSize   int   `json:"pageSize"`
+	TotalPages int   `json:"totalPages"`
+}
+
+// ExecutePaginatedQuery runs a paginated SELECT * on a table and returns data + total count
+func (s *QueryService) ExecutePaginatedQuery(connectionID string, table string, page int, pageSize int) (*PaginatedResult, error) {
+	if table == "" {
+		return nil, fmt.Errorf("table name is required")
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 25
+	}
+	if pageSize > 10000 {
+		pageSize = 10000
+	}
+
+	drv, err := s.connService.GetDriver(connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	dbType := drv.Type()
+	offset := (page - 1) * pageSize
+
+	// ── MongoDB: use JSON queries ──
+	if dbType == driver.MongoDB {
+		return s.executeMongoPaginated(ctx, drv, table, page, pageSize, offset)
+	}
+
+	// ── SQL databases: generate SELECT + COUNT ──
+	quotedTable := quoteIdent(table, dbType)
+
+	// 1. Count query
+	countSQL := fmt.Sprintf("SELECT COUNT(*) AS cnt FROM %s", quotedTable)
+	countResult, err := drv.Execute(ctx, countSQL)
+	if err != nil {
+		return nil, fmt.Errorf("count query failed: %w", err)
+	}
+	if countResult.Error != "" {
+		return nil, fmt.Errorf("count query error: %s", countResult.Error)
+	}
+
+	var totalRows int64
+	if len(countResult.Rows) > 0 {
+		if v, ok := countResult.Rows[0]["cnt"]; ok {
+			switch val := v.(type) {
+			case float64:
+				totalRows = int64(val)
+			case int64:
+				totalRows = val
+			case int:
+				totalRows = int64(val)
+			}
+		}
+	}
+
+	totalPages := int(math.Ceil(float64(totalRows) / float64(pageSize)))
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	// 2. Data query with LIMIT/OFFSET
+	var dataSQL string
+	switch dbType {
+	case driver.PostgreSQL, driver.Redshift:
+		dataSQL = fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, pageSize, offset)
+	default: // MySQL, MariaDB, SQLite
+		dataSQL = fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, pageSize, offset)
+	}
+
+	dataResult, err := drv.Execute(ctx, dataSQL)
+	if err != nil {
+		return nil, fmt.Errorf("data query failed: %w", err)
+	}
+	if dataResult.Error != "" {
+		return &PaginatedResult{
+			QueryResult: dataResult,
+			TotalRows:   totalRows,
+			Page:        page,
+			PageSize:    pageSize,
+			TotalPages:  totalPages,
+		}, nil
+	}
+
+	return &PaginatedResult{
+		QueryResult: dataResult,
+		TotalRows:   totalRows,
+		Page:        page,
+		PageSize:    pageSize,
+		TotalPages:  totalPages,
+	}, nil
+}
+
+// executeMongoPaginated handles paginated queries for MongoDB
+func (s *QueryService) executeMongoPaginated(ctx context.Context, drv driver.Driver, collection string, page int, pageSize int, skip int) (*PaginatedResult, error) {
+	// 1. Count query
+	countQuery := map[string]interface{}{
+		"collection": collection,
+		"action":     "count",
+	}
+	countJSON, _ := json.Marshal(countQuery)
+	countResult, err := drv.Execute(ctx, string(countJSON))
+	if err != nil {
+		return nil, fmt.Errorf("MongoDB count failed: %w", err)
+	}
+
+	var totalRows int64
+	if len(countResult.Rows) > 0 {
+		if v, ok := countResult.Rows[0]["count"]; ok {
+			switch val := v.(type) {
+			case float64:
+				totalRows = int64(val)
+			case int64:
+				totalRows = val
+			}
+		}
+	}
+
+	totalPages := int(math.Ceil(float64(totalRows) / float64(pageSize)))
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	// 2. Data query with skip + limit
+	dataQuery := map[string]interface{}{
+		"collection": collection,
+		"action":     "find",
+		"limit":      pageSize,
+		"skip":       skip,
+	}
+	dataJSON, _ := json.Marshal(dataQuery)
+	dataResult, err := drv.Execute(ctx, string(dataJSON))
+	if err != nil {
+		return nil, fmt.Errorf("MongoDB find failed: %w", err)
+	}
+
+	return &PaginatedResult{
+		QueryResult: dataResult,
+		TotalRows:   totalRows,
+		Page:        page,
+		PageSize:    pageSize,
+		TotalPages:  totalPages,
+	}, nil
 }
 
 // ExecuteQuery runs a query on the given connection and records history
@@ -94,3 +254,4 @@ func (s *QueryService) ListSnippets(connectionID string) ([]store.Snippet, error
 func (s *QueryService) DeleteSnippet(id int) error {
 	return s.store.DeleteSnippet(id)
 }
+

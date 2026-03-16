@@ -5,6 +5,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as driver$0 from "../internal/driver/models.js";
+
 /**
  * AppSettings holds all user-configurable settings
  */
@@ -367,8 +371,80 @@ export class ModelInfo {
     }
 }
 
+/**
+ * PaginatedResult extends QueryResult with total rows and pagination info
+ */
+export class PaginatedResult {
+    "columns": driver$0.ColumnMeta[];
+    "rows": { [_ in string]?: any }[];
+    "rowCount": number;
+    "affectedRows": number;
+
+    /**
+     * milliseconds
+     */
+    "executionTime": number;
+    "error"?: string;
+    "totalRows": number;
+    "page": number;
+    "pageSize": number;
+    "totalPages": number;
+
+    /** Creates a new PaginatedResult instance. */
+    constructor($$source: Partial<PaginatedResult> = {}) {
+        if (!("columns" in $$source)) {
+            this["columns"] = [];
+        }
+        if (!("rows" in $$source)) {
+            this["rows"] = [];
+        }
+        if (!("rowCount" in $$source)) {
+            this["rowCount"] = 0;
+        }
+        if (!("affectedRows" in $$source)) {
+            this["affectedRows"] = 0;
+        }
+        if (!("executionTime" in $$source)) {
+            this["executionTime"] = 0;
+        }
+        if (!("totalRows" in $$source)) {
+            this["totalRows"] = 0;
+        }
+        if (!("page" in $$source)) {
+            this["page"] = 0;
+        }
+        if (!("pageSize" in $$source)) {
+            this["pageSize"] = 0;
+        }
+        if (!("totalPages" in $$source)) {
+            this["totalPages"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PaginatedResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PaginatedResult {
+        const $$createField0_0 = $$createType5;
+        const $$createField1_0 = $$createType6;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("columns" in $$parsedSource) {
+            $$parsedSource["columns"] = $$createField0_0($$parsedSource["columns"]);
+        }
+        if ("rows" in $$parsedSource) {
+            $$parsedSource["rows"] = $$createField1_0($$parsedSource["rows"]);
+        }
+        return new PaginatedResult($$parsedSource as Partial<PaginatedResult>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = CellUpdateResult.createFrom;
 const $$createType1 = $Create.Array($$createType0);
 const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = $Create.Array($Create.Any);
+const $$createType4 = driver$0.ColumnMeta.createFrom;
+const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = $Create.Array($$createType2);

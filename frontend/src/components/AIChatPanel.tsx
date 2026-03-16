@@ -6,6 +6,8 @@ interface AIChatPanelProps {
   visible: boolean
   onClose: () => void
   onInsertToEditor?: (code: string) => void
+  prefillText?: string
+  onPrefillConsumed?: () => void
 }
 
 const MIN_WIDTH = 280
@@ -13,7 +15,7 @@ const MAX_WIDTH = 600
 const DEFAULT_WIDTH = 340
 const STORAGE_KEY = 'ai-panel-width'
 
-export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor }: AIChatPanelProps) {
+export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, prefillText, onPrefillConsumed }: AIChatPanelProps) {
   const { isLoggedIn, login, logout, isExpired, email } = useAuth()
   const { models, selectedModel, setModel } = useModelSelection(connectionId)
   const {
@@ -35,6 +37,15 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor }
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent])
+
+  // Handle prefill text (from Attach to AI)
+  useEffect(() => {
+    if (prefillText && visible) {
+      setInput(prev => prev ? prev + prefillText : prefillText)
+      onPrefillConsumed?.()
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [prefillText, visible, onPrefillConsumed])
 
   // Focus input when panel opens
   useEffect(() => {

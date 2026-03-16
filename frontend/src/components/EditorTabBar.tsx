@@ -2,6 +2,7 @@ interface QueryTab {
   id: string
   title: string
   query: string
+  isFullView?: boolean
 }
 
 interface EditorTabBarProps {
@@ -49,14 +50,14 @@ export function EditorTabBar({
               {isActive && (
                 <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-t" />
               )}
-              <span className={`material-symbols-outlined text-[13px] ${isActive ? 'text-primary' : 'opacity-50'}`}>code</span>
+              <span className={`material-symbols-outlined text-[8px] ${isActive ? 'text-primary' : 'opacity-50'}`}>{tab.isFullView ? 'dataset' : 'code'}</span>
               <span>{tab.title}</span>
               {tabs.length > 1 && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onTabClose(tab.id) }}
-                  className="text-text-muted/30 hover:text-text-main ml-0.5 rounded-sm hover:bg-bg-hover/50 transition-colors"
+                  className="w-4 h-4 flex items-center justify-center text-text-muted/30 hover:text-text-main ml-0.5 rounded-sm hover:bg-bg-hover/50 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-[12px]">close</span>
+                  <span className="material-symbols-outlined text-[8px] leading-none">close</span>
                 </button>
               )}
               {/* Separator */}

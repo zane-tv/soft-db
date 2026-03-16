@@ -17,6 +17,10 @@ import * as driver$0 from "../internal/driver/models.js";
 // @ts-ignore: Unused imports
 import * as store$0 from "../internal/store/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * DeleteSnippet removes a snippet
  */
@@ -25,11 +29,20 @@ export function DeleteSnippet(id: number): $CancellablePromise<void> {
 }
 
 /**
+ * ExecutePaginatedQuery runs a paginated SELECT * on a table and returns data + total count
+ */
+export function ExecutePaginatedQuery(connectionID: string, table: string, page: number, pageSize: number): $CancellablePromise<$models.PaginatedResult | null> {
+    return $Call.ByID(681887436, connectionID, table, page, pageSize).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * ExecuteQuery runs a query on the given connection and records history
  */
 export function ExecuteQuery(connectionID: string, query: string): $CancellablePromise<driver$0.QueryResult | null> {
     return $Call.ByID(2155422459, connectionID, query).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
@@ -38,7 +51,7 @@ export function ExecuteQuery(connectionID: string, query: string): $CancellableP
  */
 export function GetHistory(connectionID: string, limit: number): $CancellablePromise<store$0.HistoryEntry[]> {
     return $Call.ByID(1597289098, connectionID, limit).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -47,7 +60,7 @@ export function GetHistory(connectionID: string, limit: number): $CancellablePro
  */
 export function ListSnippets(connectionID: string): $CancellablePromise<store$0.Snippet[]> {
     return $Call.ByID(854831104, connectionID).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -59,9 +72,11 @@ export function SaveSnippet(snippet: store$0.Snippet): $CancellablePromise<void>
 }
 
 // Private type creation functions
-const $$createType0 = driver$0.QueryResult.createFrom;
+const $$createType0 = $models.PaginatedResult.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = store$0.HistoryEntry.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = store$0.Snippet.createFrom;
+const $$createType2 = driver$0.QueryResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);
+const $$createType4 = store$0.HistoryEntry.createFrom;
 const $$createType5 = $Create.Array($$createType4);
+const $$createType6 = store$0.Snippet.createFrom;
+const $$createType7 = $Create.Array($$createType6);
