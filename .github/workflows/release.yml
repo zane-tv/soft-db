@@ -211,11 +211,6 @@ jobs:
     if: ${{ !contains(github.ref_name, 'alpha') && !contains(github.ref_name, 'beta') }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: main
-
       - name: Wait for release assets to be available
         run: |
           DMG_URL="https://github.com/zane-tv/soft-db/releases/download/${GITHUB_REF_NAME}/SoftDB-darwin-arm64.dmg"
@@ -233,6 +228,12 @@ jobs:
             echo "❌ DMG asset not available after 5 attempts"
             exit 1
           fi
+
+      - name: Checkout Homebrew tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: zane-tv/homebrew-softdb
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Update Cask formula
         run: |
@@ -298,3 +299,4 @@ jobs:
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "chore(homebrew): update cask to v${GITHUB_REF_NAME#v}"
           git push
+
