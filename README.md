@@ -68,7 +68,7 @@ Download the latest release for your platform from the [Releases page](https://g
 ### 🍺 Install via Homebrew (macOS)
 
 ```bash
-brew tap zane-tv/softdb https://github.com/zane-tv/soft-db --force-auto-update
+brew tap zane-tv/softdb
 brew install --cask softdb
 ```
 
