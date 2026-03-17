@@ -81,17 +81,12 @@ jobs:
           APP_NAME="SoftDB"
           DMG_NAME="SoftDB-darwin-arm64.dmg"
           STAGING_DIR=$(mktemp -d)
-          
-          if [ -d "bin/${APP_NAME}.app" ]; then
-            cp -R "bin/${APP_NAME}.app" "${STAGING_DIR}/"
-          else
-            mkdir -p "${STAGING_DIR}/${APP_NAME}.app/Contents/MacOS"
-            cp "bin/${APP_NAME}" "${STAGING_DIR}/${APP_NAME}.app/Contents/MacOS/"
-          fi
-          
+
+          cp -R "bin/${APP_NAME}.app" "${STAGING_DIR}/"
+
           # Create Applications symlink for drag-to-install
           ln -s /Applications "${STAGING_DIR}/Applications"
-          
+
           # Create DMG
           hdiutil create -volname "${APP_NAME}" \
             -srcfolder "${STAGING_DIR}" \
