@@ -47,7 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SoftDB-windows-amd64
-          path: build/windows/nsis/*-installer.exe
+          path: bin/*-installer.exe
 
   build-macos:
     runs-on: macos-latest
