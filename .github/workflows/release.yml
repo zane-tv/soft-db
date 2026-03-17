@@ -216,11 +216,47 @@ jobs:
         with:
           ref: main
 
+      - name: Wait for release assets to be available
+        run: |
+          DMG_URL="https://github.com/zane-tv/soft-db/releases/download/${GITHUB_REF_NAME}/SoftDB-darwin-arm64.dmg"
+          echo "Waiting for release assets to become available..."
+          for i in 1 2 3 4 5; do
+            HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" "$DMG_URL")
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+              echo "✅ DMG asset is available (HTTP $HTTP_CODE)"
+              break
+            fi
+            echo "⏳ Attempt $i: DMG not yet available (HTTP $HTTP_CODE), waiting 30s..."
+            sleep 30
+          done
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ]; then
+            echo "❌ DMG asset not available after 5 attempts"
+            exit 1
+          fi
+
       - name: Update Cask formula
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          CHECKSUMS_URL="https://github.com/zane-tv/soft-db/releases/download/${GITHUB_REF_NAME}/SHA256SUMS.txt"
           DMG_URL="https://github.com/zane-tv/soft-db/releases/download/${GITHUB_REF_NAME}/SoftDB-darwin-arm64.dmg"
-          SHA256=$(curl -sL "$DMG_URL" | sha256sum | awk '{print $1}')
+
+          # Try to get SHA256 from the checksums file first (faster)
+          SHA256=$(curl -sfL "$CHECKSUMS_URL" | grep "SoftDB-darwin-arm64.dmg" | awk '{print $1}')
+
+          # Fallback: download the DMG and compute hash directly
+          if [ -z "$SHA256" ]; then
+            echo "⚠️ Could not extract SHA from checksums, downloading DMG..."
+            SHA256=$(curl -fSL "$DMG_URL" | sha256sum | awk '{print $1}')
+          fi
+
+          # Validate SHA256 format (must be 64 hex chars)
+          if ! echo "$SHA256" | grep -qE '^[a-f0-9]{64}$'; then
+            echo "❌ Invalid SHA256: '$SHA256'"
+            exit 1
+          fi
+
+          echo "✅ Version: $VERSION"
+          echo "✅ SHA256:  $SHA256"
 
           cat > Casks/softdb.rb << 'CASKEOF'
           cask "softdb" do
