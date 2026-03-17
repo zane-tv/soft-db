@@ -23,12 +23,19 @@ const DB_CARD_COLORS: Record<string, { bg: string; accent: string; icon: string;
   redshift: { bg: 'bg-[#8C4FFF]/10', accent: '#8C4FFF', icon: 'cloud', label: 'Redshift' },
 }
 
+const DB_CHIP_LIST = Object.entries(DB_CARD_COLORS).map(([value, meta]) => ({
+  value,
+  ...meta,
+}))
+
 interface ConnectionHubProps {
   onConnect: (connectionId: string) => void
 }
 
 export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingConn, setEditingConn] = useState<ConnectionConfig | null>(null)
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -43,18 +50,27 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const disconnectMutation = useDisconnect()
   const deleteMutation = useDeleteConnection()
 
-  // Filter connections by search
+  // Filter connections by search + type + status
   const filtered = useMemo(() => {
-    if (!search.trim()) return connections
-    const q = search.toLowerCase()
-    return connections.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.host.toLowerCase().includes(q) ||
-        (c.type as string).toLowerCase().includes(q) ||
-        c.database.toLowerCase().includes(q)
-    )
-  }, [connections, search])
+    let result = connections
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.host.toLowerCase().includes(q) ||
+          (c.type as string).toLowerCase().includes(q) ||
+          c.database.toLowerCase().includes(q)
+      )
+    }
+    if (typeFilter) {
+      result = result.filter((c) => (c.type as string) === typeFilter)
+    }
+    if (statusFilter) {
+      result = result.filter((c) => (c.status as string) === statusFilter)
+    }
+    return result
+  }, [connections, search, typeFilter, statusFilter])
 
   const handleCardClick = useCallback(
     async (conn: ConnectionConfig) => {
@@ -127,13 +143,48 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
             </kbd>
           </div>
         </div>
+
+        {/* DB Type Filter Chips */}
+        <div className="w-full max-w-[1200px] flex items-center justify-center gap-2 mt-4 flex-wrap animate-fade-in" style={{ animationDelay: '0.1s' }}>
+          <button
+            onClick={() => setTypeFilter(null)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-all duration-200 ${
+              typeFilter === null
+                ? 'bg-primary/15 border-primary/40 text-text-main'
+                : 'bg-bg-app border-border-subtle text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[14px]">apps</span>
+            {t('hub.filter.all')}
+          </button>
+          {DB_CHIP_LIST.map((db) => (
+            <button
+              key={db.value}
+              onClick={() => setTypeFilter(typeFilter === db.value ? null : db.value)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border whitespace-nowrap transition-all duration-200 ${
+                typeFilter === db.value
+                  ? 'text-text-main'
+                  : 'bg-bg-app border-border-subtle text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
+              }`}
+              style={typeFilter === db.value ? {
+                backgroundColor: `${db.accent}18`,
+                borderColor: `${db.accent}55`,
+              } : undefined}
+            >
+              <span className="material-symbols-outlined text-[14px]" style={{ color: db.accent }}>
+                {db.icon}
+              </span>
+              {db.label}
+            </button>
+          ))}
+        </div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 w-full overflow-y-auto overflow-x-hidden px-6 pb-12">
         <div className="max-w-[1000px] mx-auto pt-4 pb-20">
           {/* Grid Actions */}
-          <div className="flex items-end justify-between mb-8 animate-fade-in" style={{ animationDelay: '0.15s' }}>
+          <div className="flex items-end justify-between mb-6 animate-fade-in" style={{ animationDelay: '0.15s' }}>
             <div>
               <h2 className="text-2xl font-bold text-text-main tracking-tight">{t('hub.connections')}</h2>
               <p className="text-text-muted text-sm mt-1">
@@ -146,13 +197,50 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
                       : `${connections.length} ${connections.length > 1 ? t('hub.databases') : t('hub.database')} ${t('hub.configured')}`}
               </p>
             </div>
-            <button
-              onClick={openNewModal}
-              className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 active:scale-[0.97]"
-            >
-              <span className="material-symbols-outlined text-[18px]">add</span>
-              {t('hub.newConnection')}
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Status Filter Chips */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setStatusFilter(null)}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all duration-200 ${
+                    statusFilter === null
+                      ? 'bg-primary/15 border-primary/40 text-text-main'
+                      : 'bg-bg-app border-border-subtle text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
+                  }`}
+                >
+                  {t('hub.filter.all')}
+                </button>
+                <button
+                  onClick={() => setStatusFilter(statusFilter === 'connected' ? null : 'connected')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all duration-200 ${
+                    statusFilter === 'connected'
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+                      : 'bg-bg-app border-border-subtle text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
+                  }`}
+                >
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {t('hub.filter.connected')}
+                </button>
+                <button
+                  onClick={() => setStatusFilter(statusFilter === 'offline' ? null : 'offline')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium border transition-all duration-200 ${
+                    statusFilter === 'offline'
+                      ? 'bg-red-500/15 border-red-500/40 text-red-400'
+                      : 'bg-bg-app border-border-subtle text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
+                  }`}
+                >
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500/70" />
+                  {t('hub.filter.offline')}
+                </button>
+              </div>
+              <button
+                onClick={openNewModal}
+                className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 active:scale-[0.97]"
+              >
+                <span className="material-symbols-outlined text-[18px]">add</span>
+                {t('hub.newConnection')}
+              </button>
+            </div>
           </div>
 
           {/* Connection Grid */}

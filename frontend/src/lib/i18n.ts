@@ -144,6 +144,9 @@ const translations = {
     'hub.lastUsed': 'last used',
     'hub.database': 'database',
     'hub.databases': 'databases',
+    'hub.filter.all': 'All',
+    'hub.filter.connected': 'Connected',
+    'hub.filter.offline': 'Offline',
 
     // Connection Picker
     'connection.open': 'Open Connection',
@@ -376,6 +379,9 @@ const translations = {
     'hub.lastUsed': 'dùng lần cuối',
     'hub.database': 'cơ sở dữ liệu',
     'hub.databases': 'cơ sở dữ liệu',
+    'hub.filter.all': 'Tất cả',
+    'hub.filter.connected': 'Đã kết nối',
+    'hub.filter.offline': 'Ngoại tuyến',
 
     // Connection Picker
     'connection.open': 'Mở kết nối',

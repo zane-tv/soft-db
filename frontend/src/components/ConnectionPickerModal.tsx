@@ -15,6 +15,11 @@ const DB_COLORS: Record<string, { accent: string; icon: string; label: string }>
   redshift: { accent: '#8C4FFF', icon: 'cloud', label: 'Redshift' },
 }
 
+const DB_CHIP_LIST = Object.entries(DB_COLORS).map(([value, meta]) => ({
+  value,
+  ...meta,
+}))
+
 interface ConnectionPickerModalProps {
   open: boolean
   onClose: () => void
@@ -30,20 +35,27 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
   const connectMutation = useConnect()
   usePingAll() // auto-check connectivity
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [showNewModal, setShowNewModal] = useState(false)
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return connections
-    const q = search.toLowerCase()
-    return connections.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.host.toLowerCase().includes(q) ||
-        (c.type as string).toLowerCase().includes(q) ||
-        c.database.toLowerCase().includes(q)
-    )
-  }, [connections, search])
+    let result = connections
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.host.toLowerCase().includes(q) ||
+          (c.type as string).toLowerCase().includes(q) ||
+          c.database.toLowerCase().includes(q)
+      )
+    }
+    if (typeFilter) {
+      result = result.filter((c) => (c.type as string) === typeFilter)
+    }
+    return result
+  }, [connections, search, typeFilter])
 
   if (!open) return null
 
@@ -62,6 +74,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
     onSelect(connId)
     onClose()
     setSearch('')
+    setTypeFilter(null)
   }
 
   return (
@@ -96,6 +109,41 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
               />
+            </div>
+
+            {/* DB Type Filter Chips */}
+            <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+              <button
+                onClick={() => setTypeFilter(null)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap transition-all duration-200 ${
+                  typeFilter === null
+                    ? 'bg-primary/15 border-primary/40 text-text-main'
+                    : 'bg-bg-app border-border-subtle text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[12px]">apps</span>
+                {t('hub.filter.all')}
+              </button>
+              {DB_CHIP_LIST.map((db) => (
+                <button
+                  key={db.value}
+                  onClick={() => setTypeFilter(typeFilter === db.value ? null : db.value)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap transition-all duration-200 ${
+                    typeFilter === db.value
+                      ? 'text-text-main'
+                      : 'bg-bg-app border-border-subtle text-text-muted hover:bg-bg-hover/50 hover:text-text-main'
+                  }`}
+                  style={typeFilter === db.value ? {
+                    backgroundColor: `${db.accent}18`,
+                    borderColor: `${db.accent}55`,
+                  } : undefined}
+                >
+                  <span className="material-symbols-outlined text-[12px]" style={{ color: db.accent }}>
+                    {db.icon}
+                  </span>
+                  {db.label}
+                </button>
+              ))}
             </div>
           </div>
 
