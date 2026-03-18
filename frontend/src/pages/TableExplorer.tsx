@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { SidebarResizeHandle } from '@/components/SidebarResizeHandle'
 import { useTables, useViews, useFunctions, useColumns, useExecuteQuery, useQueryHistory, useSwitchDatabase } from '@/hooks/useSchema'
 import { useConnections } from '@/hooks/useConnections'
 import { ExplorerSidebar } from '@/components/ExplorerSidebar'
@@ -44,6 +45,7 @@ interface ExplorerState {
   selectedTable: string | null
   selectedDatabase: string | null
   sidebarCollapsed: boolean
+  sidebarWidth: number
 }
 const explorerStateCache = new Map<string, ExplorerState>()
 
@@ -76,6 +78,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const [activeTabId, setActiveTabId] = useState(cached?.activeTabId ?? '1')
   const [isExecuting, setIsExecuting] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(cached?.sidebarCollapsed ?? false)
+  const [sidebarWidthPx, setSidebarWidthPx] = useState(cached?.sidebarWidth ?? 220)
   const [structureTable, setStructureTable] = useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -85,8 +88,8 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
 
   // ─── Sync state to cache on changes ───
   useEffect(() => {
-    explorerStateCache.set(connectionId, { tabs, activeTabId, selectedTable, selectedDatabase, sidebarCollapsed })
-  }, [connectionId, tabs, activeTabId, selectedTable, selectedDatabase, sidebarCollapsed])
+    explorerStateCache.set(connectionId, { tabs, activeTabId, selectedTable, selectedDatabase, sidebarCollapsed, sidebarWidth: sidebarWidthPx })
+  }, [connectionId, tabs, activeTabId, selectedTable, selectedDatabase, sidebarCollapsed, sidebarWidthPx])
 
   // ─── Resizable Pane ───
   const mainRef = useRef<HTMLElement>(null)
@@ -105,6 +108,16 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   }, [])
 
   const resetResize = useCallback(() => setEditorHeightPx(null), [])
+
+  // ─── Sidebar Horizontal Resize ───
+  const handleSidebarResize = useCallback((deltaX: number) => {
+    setSidebarWidthPx((prev) => {
+      const next = prev + deltaX
+      return Math.max(160, Math.min(400, next))
+    })
+  }, [])
+
+  const resetSidebarWidth = useCallback(() => setSidebarWidthPx(220), [])
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
 
@@ -391,6 +404,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
         selectedTable={selectedTable}
         selectedDatabase={selectedDatabase}
         collapsed={sidebarCollapsed}
+        sidebarWidth={sidebarWidthPx}
         onTableClick={handleTableClick}
         onStructureOpen={setStructureTable}
         onSettingsOpen={() => setSettingsOpen(true)}
@@ -402,6 +416,11 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
         onViewFullData={handleViewFullData}
         onAttachToAI={handleAttachToAI}
       />
+
+      {/* Sidebar Resize Handle */}
+      {!sidebarCollapsed && (
+        <SidebarResizeHandle onResize={handleSidebarResize} onDoubleClick={resetSidebarWidth} />
+      )}
 
       {/* Main Content */}
       <main ref={mainRef} className="flex-1 flex flex-col h-full overflow-hidden">

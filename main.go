@@ -11,6 +11,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=v1.2.0"
+var Version = "dev"
+
 //go:embed all:frontend/dist
 var assets embed.FS
 
@@ -33,6 +36,7 @@ func main() {
 	editService := services.NewEditService(connService, queryService, settingsService, appStore)
 	oauthService := services.NewOAuthService(appStore)
 	aiService := services.NewAIService(oauthService, schemaService, connService, appStore)
+	updateService := services.NewUpdateService(Version)
 
 	// Create Wails app
 	app := application.New(application.Options{
@@ -46,6 +50,7 @@ func main() {
 			application.NewService(editService),
 			application.NewService(oauthService),
 			application.NewService(aiService),
+			application.NewService(updateService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -61,6 +66,7 @@ func main() {
 	// Inject app reference for event emission
 	oauthService.SetApp(app)
 	aiService.SetApp(app)
+	updateService.SetApp(app)
 
 	// Create main window
 	app.Window.NewWithOptions(application.WebviewWindowOptions{

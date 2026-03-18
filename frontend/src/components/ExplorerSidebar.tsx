@@ -16,6 +16,7 @@ interface ExplorerSidebarProps {
   selectedTable: string | null
   selectedDatabase?: string | null
   collapsed: boolean
+  sidebarWidth?: number
   onTableClick: (name: string) => void
   onStructureOpen: (name: string) => void
   onSettingsOpen?: () => void
@@ -36,6 +37,7 @@ export function ExplorerSidebar({
   selectedTable,
   selectedDatabase,
   collapsed,
+  sidebarWidth = 220,
   onTableClick,
   onStructureOpen,
   onSettingsOpen,
@@ -57,7 +59,8 @@ export function ExplorerSidebar({
 
   return (
     <aside
-      className={`${collapsed ? 'w-0' : 'w-[220px]'} flex-shrink-0 flex flex-col border-r border-border-subtle/30 bg-bg-app transition-all duration-300 overflow-hidden`}
+      className={`flex-shrink-0 flex flex-col border-r border-border-subtle/30 bg-bg-app overflow-hidden ${collapsed ? 'w-0' : ''}`}
+      style={collapsed ? undefined : { width: `${sidebarWidth}px` }}
     >
       {/* DB Header */}
       <div className="h-10 flex items-center gap-2 px-3.5 border-b border-border-subtle/20 shrink-0">
@@ -71,7 +74,7 @@ export function ExplorerSidebar({
       </div>
 
       {/* Object Tree */}
-      <div className="flex-1 overflow-y-auto py-2 px-2 space-y-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-3">
         {hasMultiDB ? (
           <MultiDBTree
             connectionId={connectionId}

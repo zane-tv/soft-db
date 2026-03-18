@@ -12,6 +12,43 @@ import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/
 import { ConnectionModal } from '@/components/ConnectionModal'
 import { SettingsModal } from '@/components/SettingsModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ChangelogModal } from '@/components/ChangelogModal'
+import { useUpdate } from '@/hooks/useUpdate'
+
+// ─── Date Formatter ───
+function formatLastUsed(isoStr: string): string {
+  const date = new Date(isoStr)
+  if (isNaN(date.getTime())) return isoStr
+
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+
+  // Less than 1 hour → relative
+  if (diffMins < 1) return 'vừa xong'
+  if (diffMins < 60) return `${diffMins} phút trước`
+
+  // Less than 24 hours → relative hours
+  if (diffHours < 24) return `${diffHours} giờ trước`
+
+  // Format time part
+  const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+  // Today
+  const isToday = date.toDateString() === now.toDateString()
+  if (isToday) return `Hôm nay ${timeStr}`
+
+  // Yesterday
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) return `Hôm qua ${timeStr}`
+
+  // Older → DD/MM HH:mm
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  return `${day}/${month} ${timeStr}`
+}
 
 // ─── Database Branding ───
 const DB_CARD_COLORS: Record<string, { bg: string; accent: string; icon: string; label: string }> = {
@@ -40,12 +77,14 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const [editingConn, setEditingConn] = useState<ConnectionConfig | null>(null)
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [changelogOpen, setChangelogOpen] = useState(false)
   const [deletingConn, setDeletingConn] = useState<ConnectionConfig | null>(null)
 
   const { data: connections = [], isLoading } = useConnections()
   const { isLoading: isPinging } = usePingAll()
   const { data: settingsData } = useSettings()
   const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
+  const { version, hasUpdate } = useUpdate()
   const connectMutation = useConnect()
   const disconnectMutation = useDisconnect()
   const deleteMutation = useDeleteConnection()
@@ -116,13 +155,26 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
             <img src="/softdb-logo.png" alt="SoftDB" className="size-8 rounded-lg" />
             <h1 className="font-bold text-lg tracking-tight text-text-main">SoftDB</h1>
           </div>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="flex items-center justify-center size-9 rounded-lg text-text-muted hover:text-text-main hover:bg-white/5 transition-all duration-200"
-            title="Settings"
-          >
-            <span className="material-symbols-outlined text-[20px]">settings</span>
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Changelog / Update Bell */}
+            <button
+              onClick={() => setChangelogOpen(true)}
+              className="relative flex items-center justify-center size-9 rounded-lg text-text-muted hover:text-text-main hover:bg-white/5 transition-all duration-200"
+              title={t('update.title')}
+            >
+              <span className="material-symbols-outlined text-[20px]">notifications</span>
+              {hasUpdate && (
+                <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-red-500 ring-2 ring-bg-card animate-pulse" />
+              )}
+            </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="flex items-center justify-center size-9 rounded-lg text-text-muted hover:text-text-main hover:bg-white/5 transition-all duration-200"
+              title="Settings"
+            >
+              <span className="material-symbols-outlined text-[20px]">settings</span>
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -298,7 +350,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
 
       {/* Version */}
       <div className="fixed bottom-4 right-6 text-xs text-text-muted/30 font-mono pointer-events-none select-none z-0">
-        v1.0.2
+        {version}
       </div>
 
       {/* Click-away to close context menu */}
@@ -358,6 +410,13 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      {/* Changelog Modal */}
+      <ChangelogModal
+        open={changelogOpen}
+        onClose={() => setChangelogOpen(false)}
+        lang={(settingsData?.language as 'en' | 'vi') ?? 'en'}
       />
     </>
   )
@@ -432,7 +491,7 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardPr
               : status === 'offline'
                 ? t('connection.status.offline')
                 : conn.lastUsed
-                  ? `${t('hub.idle')} — ${t('hub.lastUsed')} ${conn.lastUsed}`
+                  ? `${t('hub.idle')} — ${t('hub.lastUsed')} ${formatLastUsed(conn.lastUsed)}`
                   : t('connection.status.idle')}
           </span>
         </div>

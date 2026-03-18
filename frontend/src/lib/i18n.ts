@@ -236,6 +236,25 @@ const translations = {
     'about.shortcut.save': 'Save Snippet',
     'about.shortcut.settings': 'Open Settings',
     'about.shortcut.fullscreen': 'Toggle Full View',
+
+    // Update & Changelog
+    'update.title': 'Updates & Changelog',
+    'update.currentVersion': 'Current version',
+    'update.newVersion': 'New Update',
+    'update.latest': 'Latest',
+    'update.history': 'Changelog',
+    'update.available': 'New version available:',
+    'update.availableDesc': 'Download the latest version to get new features and fixes.',
+    'update.upToDate': 'You\'re up to date!',
+    'update.upToDateDesc': 'You are running the latest version',
+    'update.releaseNotes': 'Release Notes',
+    'update.downloading': 'Downloading',
+    'update.downloadComplete': 'Download complete! Opening installer...',
+    'update.download': 'Download Update',
+    'update.close': 'Close',
+    'update.current': 'current',
+    'update.loadingChangelog': 'Loading changelog...',
+    'update.noChangelog': 'No changelog available',
   },
 
   vi: {
@@ -471,6 +490,25 @@ const translations = {
     'about.shortcut.save': 'Lưu snippet',
     'about.shortcut.settings': 'Mở cài đặt',
     'about.shortcut.fullscreen': 'Bật/tắt toàn màn hình',
+
+    // Update & Changelog
+    'update.title': 'Cập nhật & Nhật ký',
+    'update.currentVersion': 'Phiên bản hiện tại',
+    'update.newVersion': 'Bản cập nhật mới',
+    'update.latest': 'Mới nhất',
+    'update.history': 'Nhật ký thay đổi',
+    'update.available': 'Có phiên bản mới:',
+    'update.availableDesc': 'Tải bản mới nhất để nhận tính năng và bản sửa lỗi.',
+    'update.upToDate': 'Bạn đang dùng bản mới nhất!',
+    'update.upToDateDesc': 'Bạn đang sử dụng phiên bản mới nhất',
+    'update.releaseNotes': 'Ghi chú phát hành',
+    'update.downloading': 'Đang tải',
+    'update.downloadComplete': 'Tải xong! Đang mở trình cài đặt...',
+    'update.download': 'Tải cập nhật',
+    'update.close': 'Đóng',
+    'update.current': 'hiện tại',
+    'update.loadingChangelog': 'Đang tải nhật ký...',
+    'update.noChangelog': 'Không có nhật ký thay đổi',
   },
 } satisfies Record<Language, Record<string, string>>
 
