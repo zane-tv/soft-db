@@ -18,6 +18,11 @@
 
 ---
 
+## 📸 Screenshots
+
+![Connection Hub](screenshot/connection_hub_vi.jpeg)
+![Table Explorer](screenshot/table_fullview_en.jpeg)
+
 ## ✨ Features
 
 - 🗄️ **Multi-Database Support** — PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift

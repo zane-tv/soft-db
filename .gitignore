@@ -16,3 +16,5 @@ vendor/
 frontend/bindings
 frontend/src/routeTree.gen.ts
 soft-db.exe
+testdata/sample.db-shm
+testdata/sample.db-wal
