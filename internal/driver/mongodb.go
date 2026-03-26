@@ -195,7 +195,16 @@ func (d *MongoDriver) executeFind(ctx context.Context, coll *mongo.Collection, c
 		limit = int64(l)
 	}
 
-	opts := options.Find().SetLimit(limit)
+	skip := int64(0)
+	if s, ok := cmd["skip"].(int64); ok {
+		skip = s
+	} else if s, ok := cmd["skip"].(int32); ok {
+		skip = int64(s)
+	} else if s, ok := cmd["skip"].(float64); ok {
+		skip = int64(s)
+	}
+
+	opts := options.Find().SetLimit(limit).SetSkip(skip)
 	cursor, err := coll.Find(ctx, filter, opts)
 	if err != nil {
 		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
