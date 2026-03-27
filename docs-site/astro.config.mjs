@@ -2,7 +2,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://docs.softdb.app',
+  site: 'https://softdb.site',
   integrations: [
     starlight({
       title: 'SoftDB Docs',
