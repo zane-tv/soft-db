@@ -1,0 +1,78 @@
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* Dark theme (default) - SoftDB brand */
+:root {
+  --sl-font: 'IBM Plex Sans', sans-serif;
+  --sl-font-mono: 'JetBrains Mono', monospace;
+
+  --sl-color-bg: #0F172A;
+  --sl-color-bg-nav: #0F172A;
+  --sl-color-bg-sidebar: #0F172A;
+  --sl-color-hairline-light: #1E293B;
+  --sl-color-hairline: #334155;
+  --sl-color-white: #F8FAFC;
+  --sl-color-gray-1: #E2E8F0;
+  --sl-color-gray-2: #CBD5E1;
+  --sl-color-gray-3: #94A3B8;
+  --sl-color-gray-4: #64748B;
+  --sl-color-gray-5: #475569;
+  --sl-color-gray-6: #1E293B;
+  --sl-color-black: #020617;
+  --sl-color-accent-low: #0A2E1A;
+  --sl-color-accent: #22C55E;
+  --sl-color-accent-high: #86EFAC;
+  --sl-color-text-accent: #22C55E;
+}
+
+/* Light theme overrides */
+:root[data-theme='light'] {
+  --sl-color-bg: #FAFBFC;
+  --sl-color-bg-nav: #FFFFFF;
+  --sl-color-bg-sidebar: #F8FAFC;
+  --sl-color-accent-low: #DCFCE7;
+  --sl-color-accent: #16A34A;
+  --sl-color-accent-high: #052E16;
+  --sl-color-text-accent: #16A34A;
+}
+
+/* Heading font - JetBrains Mono for dev-tool feel */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.02em;
+}
+
+/* Hero styling enhancements */
+.hero {
+  padding-block: 4rem;
+}
+
+/* Code blocks - match SoftDB editor style */
+.expressive-code pre {
+  border: 1px solid #1E293B !important;
+}
+
+/* Sidebar active link green accent */
+[data-current="true"] {
+  border-color: #22C55E !important;
+}
+
+/* Smooth transitions on interactive elements */
+a, button {
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0F172A;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

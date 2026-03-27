@@ -38,10 +38,19 @@ export default defineConfig({
           autogenerate: { directory: 'reference' },
         },
       ],
+      customCss: ['./src/styles/custom.css'],
       head: [
         {
           tag: 'meta',
           attrs: { name: 'twitter:site', content: '@softdb' },
+        },
+        {
+          tag: 'link',
+          attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+        },
+        {
+          tag: 'link',
+          attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         },
       ],
       lastUpdated: true,
