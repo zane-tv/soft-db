@@ -1,0 +1,91 @@
+---
+title: Configuration Reference
+description: Complete reference for all SoftDB settings with defaults and descriptions
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page lists every configurable setting in SoftDB, its default value, and what it does. Settings are changed through the [Settings panel](/customization/settings) and stored locally in SoftDB's SQLite database.
+
+<Aside>
+All defaults listed here come directly from `DefaultSettings()` in `services/settings_service.go`. If a setting is missing from your saved preferences, SoftDB falls back to the default automatically.
+</Aside>
+
+## General
+
+| Setting | Key | Default | Description |
+|---------|-----|---------|-------------|
+| Language | `language` | `"en"` | UI language. Options: `"en"` (English), `"vi"` (Vietnamese). |
+| Auto-connect | `autoConnect` | `false` | Automatically reconnect to the last-used connection on startup. |
+| Confirm dangerous operations | `confirmDangerous` | `true` | Show a confirmation dialog before running `DROP`, `TRUNCATE`, and similar destructive statements. |
+| Max history | `maxHistory` | `500` | Maximum number of query history entries stored per connection. Older entries are trimmed automatically. |
+
+## Appearance
+
+| Setting | Key | Default | Description |
+|---------|-----|---------|-------------|
+| Theme | `theme` | `"dark"` | Active UI theme. The value is the theme ID string (e.g., `"dark"`, `"light"`). |
+| Font size | `fontSize` | `13` | Base font size in pixels for the SQL editor and data grid. Range: 10–24. |
+| Row density | `rowDensity` | `"normal"` | Row height in the data grid. Options: `"compact"`, `"normal"`, `"comfortable"`. |
+
+## Editor
+
+| Setting | Key | Default | Description |
+|---------|-----|---------|-------------|
+| Tab size | `tabSize` | `2` | Number of spaces inserted when you press Tab in the SQL editor. Options: `2` or `4`. |
+| Word wrap | `wordWrap` | `false` | Wrap long lines in the editor instead of scrolling horizontally. |
+| Line numbers | `lineNumbers` | `true` | Show line numbers in the editor gutter. |
+| Auto-uppercase | `autoUppercase` | `false` | Automatically convert SQL keywords to uppercase as you type (`select` → `SELECT`). |
+
+## Query Execution
+
+| Setting | Key | Default | Description |
+|---------|-----|---------|-------------|
+| Query timeout | `queryTimeout` | `30` | Maximum seconds to wait for a query to complete before cancelling. Minimum: 5, maximum: 600. |
+| Default limit | `defaultLimit` | `100` | Row count used when running a `SELECT` without an explicit `LIMIT`. Range: 10–10,000. |
+| Confirm mutations | `confirmMutations` | `false` | Show a confirmation dialog before executing `INSERT`, `UPDATE`, or `DELETE` statements. |
+| Auto-limit | `autoLimit` | `false` | Automatically append `LIMIT <defaultLimit>` to `SELECT` statements that don't already have one. |
+| Warn on query risks | `warnQueryRisks` | `true` | Show a warning banner when SoftDB detects potentially dangerous query patterns (e.g., `DELETE` without `WHERE`). |
+| Warn on limited analysis | `warnLimitedQueryAnalysis` | `true` | Show a notice when SoftDB's static analysis can't fully inspect a query (e.g., complex CTEs). |
+
+## Connection
+
+| Setting | Key | Default | Description |
+|---------|-----|---------|-------------|
+| Connection timeout | `connectionTimeout` | `15` | Seconds to wait when establishing a new database connection before giving up. Range: 3–120. |
+
+## Data & Export
+
+| Setting | Key | Default | Description |
+|---------|-----|---------|-------------|
+| NULL display | `nullDisplay` | `"badge"` | How `NULL` values appear in the data grid. Options: `"badge"` (grey pill), `"italic"` (italic text), `"dash"` (em dash). |
+| Date format | `dateFormat` | `"iso"` | How date and timestamp columns are rendered. Options: `"iso"` (ISO 8601), `"us"` (MM/DD/YYYY), `"eu"` (DD/MM/YYYY), `"relative"` (e.g., "2 hours ago"). |
+| Export format | `exportFormat` | `"csv"` | Default file format when exporting query results. Options: `"csv"`, `"json"`, `"tsv"`. |
+| CSV delimiter | `csvDelimiter` | `","` | Character used to separate fields in CSV exports. Single character. Common alternatives: `";"` (European locales), `"\t"` (tab-separated). |
+
+## AI Provider
+
+| Setting | Key | Default | Description |
+|---------|-----|---------|-------------|
+| AI provider | `aiProvider` | `"openai"` | Which AI backend to use for the AI Assistant. Options: `"openai"`, `"anthropic"`, `"ollama"`. |
+| AI API key | `aiApiKey` | `""` | API key for the selected provider. Required for OpenAI and Anthropic. Leave empty when using OAuth login or Ollama. |
+| AI base URL | `aiBaseUrl` | `""` | Custom API base URL. Useful for self-hosted Ollama instances or OpenAI-compatible proxies. |
+| AI model | `aiModel` | `"gpt-5.3-codex"` | Model identifier to use for AI chat. Must be a valid model name for the selected provider. |
+
+<Aside type="caution">
+AI API keys are stored in plain JSON in the settings table — they are **not** encrypted. Avoid storing sensitive API keys on shared machines. Connection passwords and OAuth tokens use AES-256-GCM encryption; see [Security & Encryption](/security/security) for details.
+</Aside>
+
+## Settings Storage
+
+SoftDB stores all settings as a single JSON blob in the `settings` table of its local SQLite database. The database lives at:
+
+- **macOS**: `~/Library/Application Support/SoftDB/softdb.sqlite`
+- **Windows**: `%APPDATA%\SoftDB\softdb.sqlite`
+- **Linux**: `~/.config/SoftDB/softdb.sqlite`
+
+When SoftDB loads settings, it starts with the defaults and overlays any values you've saved. This means adding new settings in a future version won't break existing installs — missing keys just fall back to their defaults.
+
+## Resetting to Defaults
+
+There's no "Reset all" button in the UI yet. To reset a specific setting, open the Settings panel and change it manually. To reset everything, you can delete or clear the `settings` table in the SQLite database using any SQLite browser.

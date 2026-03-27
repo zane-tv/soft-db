@@ -1,0 +1,73 @@
+---
+title: Appearance
+description: Theme modes, font settings, and display customization in SoftDB
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+SoftDB's appearance settings let you tune the visual experience to match your workflow and environment. Open them via **Settings → Appearance**.
+
+## Themes
+
+SoftDB ships with multiple themes. Each one is previewed as a small card showing its background, card, and accent colors. Click a card to switch instantly — no restart needed.
+
+The available themes include dark variants (the default) and light variants. The active theme shows a checkmark in the top-right corner of its card.
+
+<Aside type="tip">
+Dark themes are easier on the eyes during long sessions. If you work in a bright office, a light theme reduces the contrast between your screen and surroundings.
+</Aside>
+
+Themes affect the entire app: the Connection Hub, workspace tabs, the SQL editor, the data grid, and all modals.
+
+## Font Size
+
+The **Font size** slider (or number input) controls the base text size used in the SQL editor and data grid. The range is 10–24 px, with a default of 13 px.
+
+Smaller sizes let you see more code and data at once. Larger sizes reduce eye strain on high-DPI displays where the OS scaling isn't quite right.
+
+The font size setting applies to:
+- The Monaco SQL editor
+- Column headers and cell values in the data grid
+- The query history panel
+
+It does not affect the app's navigation chrome (sidebar, tab bar, modal text), which uses the system font at a fixed size.
+
+## Row Density
+
+Row density controls the height of rows in the data grid. Three options are available:
+
+| Option | Row height | Best for |
+|--------|-----------|---------|
+| **Compact** | Minimal padding | Scanning many rows quickly, wide tables |
+| **Normal** | Balanced (default) | General use |
+| **Comfortable** | Extra padding | Reading long text values, accessibility |
+
+Changing row density takes effect immediately and persists across sessions.
+
+## Editor Appearance
+
+Two editor-specific display settings live in the **Editor** section of Settings, but they're worth mentioning here since they affect how the editor looks:
+
+**Line numbers** — shows a numbered gutter on the left side of the editor. On by default. Turn it off if you prefer a cleaner look or are working with very short queries.
+
+**Word wrap** — wraps long lines within the editor viewport instead of requiring horizontal scrolling. Off by default. Useful when writing long `SELECT` lists or complex `WHERE` clauses.
+
+These settings are covered in more detail in the [Settings Overview](/customization/settings) under the Editor section.
+
+## NULL Display
+
+How `NULL` values appear in the data grid is technically a data setting, but it has a strong visual impact. You can choose between:
+
+- **Badge** (default) — a small grey pill labeled `NULL`, visually distinct from empty strings
+- **Italic** — the text *null* in italic, subtle and unobtrusive
+- **Dash** — an em dash, minimal and clean
+
+Find this option under **Settings → Data → NULL display**.
+
+## Persistence
+
+All appearance settings are stored locally in SoftDB's SQLite database. They survive app restarts and updates. If you reinstall SoftDB, the settings file is preserved in your OS config directory:
+
+- **macOS**: `~/Library/Application Support/SoftDB/softdb.sqlite`
+- **Windows**: `%APPDATA%\SoftDB\softdb.sqlite`
+- **Linux**: `~/.config/SoftDB/softdb.sqlite`

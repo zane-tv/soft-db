@@ -1,0 +1,153 @@
+---
+title: Security & Encryption
+description: How SoftDB protects your credentials, tokens, and data
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+SoftDB is built with a security-first mindset. Credentials never leave your machine unencrypted, queries use parameterized statements to prevent injection, and OAuth flows never expose tokens to the frontend. This page explains each protection in detail.
+
+## Overview
+
+The main security properties SoftDB provides:
+
+- **AES-256-GCM encryption** for all stored passwords and OAuth tokens
+- **PBKDF2-SHA256 key derivation** from a per-install random salt
+- **OAuth 2.0 PKCE** with no client secrets and a local-only callback server
+- **Parameterized queries** for all data mutation operations
+- **SSH tunnel support** with password and private-key authentication
+- **Safe Mode** per connection to block destructive statements
+
+---
+
+## Credential Encryption
+
+Every connection password and SSH password you save is encrypted before it touches the database.
+
+### Algorithm
+
+SoftDB uses **AES-256-GCM** (Galois/Counter Mode). GCM is an authenticated encryption mode — it both encrypts the data and produces an authentication tag, so any tampering with the ciphertext is detected on decryption. The implementation lives in `internal/crypto/crypto.go`.
+
+Each encrypted value is stored as a base64-encoded string in the format `nonce || ciphertext`. A fresh random nonce is generated for every encryption operation, so two encryptions of the same password produce different ciphertext.
+
+### Key Derivation
+
+The encryption key is derived using **PBKDF2-SHA256** with 100,000 iterations. The input is a fixed application label (`softdb-local-encryption-v2`) combined with a **32-byte random salt** that's generated once per installation and stored in the `schema_meta` table of the local SQLite database.
+
+Because the salt is random and per-install, the encryption key is unique to each SoftDB installation. Copying the database file to another machine won't decrypt the credentials without the salt — and the salt is stored in the same database, so the whole file must be present.
+
+```
+Key = PBKDF2-SHA256(pepper="softdb-local-encryption-v2", salt=<random 32 bytes>, iterations=100_000, keyLen=32)
+```
+
+### What's Encrypted
+
+| Data | Encrypted |
+|------|-----------|
+| Connection passwords | Yes (AES-256-GCM) |
+| SSH tunnel passwords | Yes (AES-256-GCM) |
+| OAuth access tokens | Yes (AES-256-GCM) |
+| OAuth refresh tokens | Yes (AES-256-GCM) |
+| AI API keys | **No** — stored as plain JSON in settings |
+| Connection hostnames, usernames, ports | No |
+
+<Aside type="caution">
+AI API keys (OpenAI, Anthropic, Ollama) are stored in plain text in the settings JSON. Don't store sensitive production API keys on shared machines. Use OAuth login for OpenAI when possible — OAuth tokens are encrypted.
+</Aside>
+
+### Migration from Legacy Encryption
+
+Earlier versions of SoftDB derived the encryption key from `SHA256(hostname + username)` instead of a random salt. On first launch after upgrading, SoftDB automatically re-encrypts all stored credentials using the new key scheme. The migration is logged but non-fatal — if a credential can't be migrated, it's skipped rather than blocking startup.
+
+---
+
+## OAuth PKCE
+
+SoftDB supports OAuth 2.0 login for OpenAI's ChatGPT API. The implementation uses the **PKCE (Proof Key for Code Exchange)** extension, which is designed for public clients that can't safely store a client secret.
+
+### How It Works
+
+1. SoftDB generates a random **code verifier** (32 bytes, base64url-encoded).
+2. It computes the **code challenge** as `SHA256(code_verifier)`, base64url-encoded.
+3. A local HTTP server starts on `127.0.0.1:1455` (or a random port if 1455 is busy).
+4. SoftDB opens the authorization URL in your default browser, including the code challenge and a random **state** parameter.
+5. After you log in, the browser redirects to `http://localhost:<port>/auth/callback`.
+6. The callback handler verifies the state parameter, then exchanges the authorization code for tokens using the code verifier — no client secret needed.
+7. Tokens are encrypted with AES-256-GCM and saved to the local database.
+
+### Security Properties
+
+**No client secrets.** PKCE replaces the client secret with a cryptographic challenge. Even if someone intercepts the authorization code, they can't exchange it without the code verifier.
+
+**Local-only callback.** The callback server only accepts connections from `127.0.0.1` or `::1`. Requests from any other address receive a 403 Forbidden response.
+
+**Tokens never reach the frontend.** The entire OAuth flow runs in the Go backend. The React frontend never sees the access token or refresh token — it only receives a status event (`logged_in`, `logged_out`, `expired`) and optionally the user's email address.
+
+**Automatic token refresh.** When the access token is within 60 seconds of expiry, SoftDB automatically refreshes it using the stored refresh token before making an API call.
+
+---
+
+## Parameterized Queries
+
+All data mutation operations in SoftDB use **parameterized SQL statements** (also called prepared statements). This means user-supplied values are passed as separate parameters, never interpolated directly into the SQL string.
+
+For example, when you edit a cell value in the data grid, the backend constructs a query like:
+
+```sql
+UPDATE "users" SET "email" = $1 WHERE "id" = $2
+```
+
+The actual values are bound separately by the database driver. This completely prevents SQL injection — even if a cell value contains SQL syntax, it's treated as data, not code.
+
+This protection applies to:
+- Cell edits (UPDATE)
+- Row inserts (INSERT)
+- Row deletes (DELETE)
+- All internal store operations (connection CRUD, history, snippets)
+
+---
+
+## SSH Tunnel Security
+
+When you connect through an SSH tunnel, SoftDB opens a local TCP listener on a **random port on 127.0.0.1** and forwards traffic through the SSH connection to the target database. The local port is chosen by the OS at runtime, so it doesn't conflict with other services.
+
+### Authentication Methods
+
+SoftDB supports two SSH authentication methods:
+
+- **Password** — the SSH password is stored encrypted (AES-256-GCM) alongside the connection config.
+- **Private key** — provide a path to a PEM or OpenSSH private key file. The key is read from disk at connection time and is never stored in the database.
+
+Both methods can be configured simultaneously; SoftDB tries them in order.
+
+<Aside type="caution">
+**Host key verification is not implemented in v1.** SoftDB uses `ssh.InsecureIgnoreHostKey()`, which means it accepts any SSH server host key without verification. This makes it vulnerable to man-in-the-middle attacks on untrusted networks. Only connect to SSH servers you trust, and prefer private networks or VPNs. Host key verification is planned for a future release.
+</Aside>
+
+---
+
+## Safe Mode
+
+Safe Mode is a per-connection setting that blocks destructive SQL statements (`DROP`, `TRUNCATE`, `DELETE` without `WHERE`, etc.) at the query execution layer. It's designed for production databases where accidental data loss would be catastrophic.
+
+See [Safe Mode](/features/safe-mode) for full details on what's blocked and how to enable it.
+
+---
+
+## Local Storage
+
+All data SoftDB stores lives in a single SQLite file on your machine. Nothing is sent to any SoftDB server. The file location:
+
+- **macOS**: `~/Library/Application Support/SoftDB/softdb.sqlite`
+- **Windows**: `%APPDATA%\SoftDB\softdb.sqlite`
+- **Linux**: `~/.config/SoftDB/softdb.sqlite`
+
+The database contains:
+- Saved connections (with encrypted passwords)
+- Query history
+- SQL snippets
+- App settings (including plain-text AI API keys)
+- Encrypted OAuth tokens
+- AI chat history
+
+Protect this file with appropriate OS-level file permissions, especially on shared machines.
