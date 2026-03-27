@@ -94,6 +94,11 @@ func (s *QueryService) ExecutePaginatedQuery(connectionID string, table string, 
 		return s.executeMongoPaginated(ctx, drv, table, page, pageSize, offset)
 	}
 
+	// ── Redis: execute type-aware command for key ──
+	if dbType == driver.Redis {
+		return s.executeRedisPaginated(ctx, drv, table)
+	}
+
 	// ── SQL databases: generate SELECT + COUNT ──
 	quotedTable := quoteIdent(table, dbType)
 
@@ -207,6 +212,49 @@ func (s *QueryService) executeMongoPaginated(ctx context.Context, drv driver.Dri
 		Page:        page,
 		PageSize:    pageSize,
 		TotalPages:  totalPages,
+	}, nil
+}
+
+func (s *QueryService) executeRedisPaginated(ctx context.Context, drv driver.Driver, key string) (*PaginatedResult, error) {
+	keyType, err := drv.Execute(ctx, "TYPE "+key)
+	if err != nil {
+		return nil, fmt.Errorf("redis TYPE failed: %w", err)
+	}
+
+	typeName := "string"
+	if len(keyType.Rows) > 0 {
+		if v, ok := keyType.Rows[0]["result"]; ok {
+			typeName, _ = v.(string)
+		}
+	}
+
+	var cmd string
+	switch typeName {
+	case "hash":
+		cmd = "HGETALL " + key
+	case "list":
+		cmd = "LRANGE " + key + " 0 999"
+	case "set":
+		cmd = "SMEMBERS " + key
+	case "zset":
+		cmd = "ZRANGE " + key + " 0 999 WITHSCORES"
+	case "stream":
+		cmd = "XRANGE " + key + " - + COUNT 1000"
+	default:
+		cmd = "GET " + key
+	}
+
+	result, err := drv.Execute(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("redis query failed: %w", err)
+	}
+
+	return &PaginatedResult{
+		QueryResult: result,
+		TotalRows:   result.RowCount,
+		Page:        1,
+		PageSize:    int(result.RowCount),
+		TotalPages:  1,
 	}, nil
 }
 
