@@ -1,6 +1,6 @@
 /* ============================================================================
    SoftDB Docs — Premium Theme
-   Design System: Deep navy dark mode, clean white light mode, green (#22C55E) accent
+   Design System: Deep navy dark mode, clean white light mode, indigo (#6366F1) accent
    Typography: IBM Plex Sans (body) + JetBrains Mono (code/headings)
    ============================================================================ */
 
@@ -38,22 +38,22 @@
   --sl-color-gray-6: #1a2540;
   --sl-color-black: #060A14;
 
-  /* Accent — green */
-  --sl-color-accent-low: #0A2E1A;
-  --sl-color-accent: #22C55E;
-  --sl-color-accent-high: #86EFAC;
-  --sl-color-text-accent: #4ADE80;
+  /* Accent — indigo */
+  --sl-color-accent-low: #1E1B4B;
+  --sl-color-accent: #6366F1;
+  --sl-color-accent-high: #A5B4FC;
+  --sl-color-text-accent: #818CF8;
 
   /* Custom tokens */
-  --sdb-glow: 0 0 20px rgba(34, 197, 94, 0.15);
-  --sdb-glow-strong: 0 0 30px rgba(34, 197, 94, 0.25);
+  --sdb-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+  --sdb-glow-strong: 0 0 30px rgba(99, 102, 241, 0.25);
   --sdb-card-bg: #111B2E;
   --sdb-card-border: #1E2D47;
   --sdb-card-hover-border: #2E4065;
   --sdb-surface: #0E1525;
   --sdb-surface-raised: #131D32;
   --sdb-gradient-hero: linear-gradient(180deg, #0B1120 0%, #111D35 50%, #0B1120 100%);
-  --sdb-gradient-subtle: linear-gradient(135deg, rgba(34, 197, 94, 0.03) 0%, transparent 50%);
+  --sdb-gradient-subtle: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, transparent 50%);
   --sdb-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --sdb-radius: 10px;
   --sdb-radius-lg: 14px;
@@ -77,10 +77,10 @@
   --sl-color-gray-6: #F3F4F6;
   --sl-color-black: #FFFFFF;
 
-  --sl-color-accent-low: #DCFCE7;
-  --sl-color-accent: #059669;
-  --sl-color-accent-high: #022C22;
-  --sl-color-text-accent: #059669;
+  --sl-color-accent-low: #E0E7FF;
+  --sl-color-accent: #4F46E5;
+  --sl-color-accent-high: #1E1B4B;
+  --sl-color-text-accent: #4F46E5;
 
   --sdb-glow: 0 1px 3px rgba(0, 0, 0, 0.06);
   --sdb-glow-strong: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -90,7 +90,7 @@
   --sdb-surface: #F8FAFB;
   --sdb-surface-raised: #FFFFFF;
   --sdb-gradient-hero: linear-gradient(180deg, #F8FAFB 0%, #FFFFFF 50%, #F8FAFB 100%);
-  --sdb-gradient-subtle: linear-gradient(135deg, rgba(5, 150, 105, 0.04) 0%, transparent 50%);
+  --sdb-gradient-subtle: linear-gradient(135deg, rgba(79, 70, 229, 0.04) 0%, transparent 50%);
 }
 
 /* ── Global Base ───────────────────────────────────────────────────────────── */
@@ -109,14 +109,14 @@ html {
 
 /* Selection highlight */
 ::selection {
-  background: rgba(34, 197, 94, 0.25);
+  background: rgba(99, 102, 241, 0.25);
   color: inherit;
 }
 :root[data-theme='light'] ::selection {
-  background: rgba(5, 150, 105, 0.2);
+  background: rgba(79, 70, 229, 0.2);
 }
 
-/* Focus rings — green accent */
+/* Focus rings — indigo accent */
 :focus-visible {
   outline: 2px solid var(--sl-color-accent);
   outline-offset: 2px;
@@ -222,7 +222,7 @@ nav.sidebar a:hover {
   color: var(--sl-color-white);
 }
 
-/* Active sidebar item — green left border + bg highlight */
+/* Active sidebar item — indigo left border + bg highlight */
 [data-current="true"] {
   border-color: var(--sl-color-accent) !important;
   background: var(--sl-color-accent-low) !important;
@@ -266,7 +266,7 @@ nav.sidebar summary {
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.1;
-  text-shadow: 0 2px 20px rgba(34, 197, 94, 0.1);
+  text-shadow: 0 2px 20px rgba(99, 102, 241, 0.12);
 }
 
 .hero .tagline {
@@ -291,7 +291,7 @@ nav.sidebar summary {
   font-weight: 600;
   font-size: 0.95rem;
   letter-spacing: 0.01em;
-  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3), 0 0 0 0 rgba(34, 197, 94, 0);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3), 0 0 0 0 rgba(99, 102, 241, 0);
   transition: all var(--sdb-transition);
   text-decoration: none;
   border: none;
@@ -299,9 +299,9 @@ nav.sidebar summary {
 
 .hero a.action.primary:hover,
 .hero a[data-type="primary"]:hover {
-  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.4), 0 0 0 3px rgba(34, 197, 94, 0.1);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4), 0 0 0 3px rgba(99, 102, 241, 0.1);
   transform: translateY(-1px);
-  background: #1DB954;
+  background: #4338CA;
 }
 
 .hero a.action.minimal,
@@ -402,7 +402,7 @@ nav.sidebar summary {
   content: '';
   display: block;
   height: 3px;
-  background: linear-gradient(90deg, var(--sl-color-accent) 0%, rgba(34, 197, 94, 0.3) 50%, transparent 100%);
+  background: linear-gradient(90deg, var(--sl-color-accent) 0%, rgba(99, 102, 241, 0.3) 50%, transparent 100%);
   border-radius: var(--sdb-radius) var(--sdb-radius) 0 0;
 }
 
@@ -512,10 +512,10 @@ aside[aria-label="Note"] {
 /* Tip */
 aside[aria-label="Tip"] {
   border-left-color: var(--sl-color-accent);
-  background: rgba(34, 197, 94, 0.06);
+  background: rgba(99, 102, 241, 0.06);
 }
 :root[data-theme='light'] aside[aria-label="Tip"] {
-  background: rgba(5, 150, 105, 0.05);
+  background: rgba(79, 70, 229, 0.05);
 }
 
 /* Caution */
@@ -730,6 +730,68 @@ starlight-toc a[aria-current="true"] {
 @media (max-width: 375px) {
   .hero h1 {
     font-size: 1.75rem;
+  }
+}
+
+/* ── Home Page Responsive ──────────────────────────────────────────────────── */
+
+/* Hero section — stack vertically on tablets and below */
+@media (max-width: 768px) {
+  .hero > div {
+    flex-direction: column-reverse !important;
+    text-align: center;
+  }
+
+  .hero img {
+    max-width: 100%;
+    margin-inline: auto;
+  }
+
+  .hero .tagline {
+    margin-inline: auto;
+  }
+
+  .hero .actions {
+    justify-content: center;
+  }
+}
+
+/* Card grid — single column on small screens */
+@media (max-width: 640px) {
+  .card-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Card grid — 2 columns on tablets */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .card-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Hero refinements for very small screens */
+@media (max-width: 480px) {
+  .hero img {
+    max-height: 200px;
+    object-fit: cover;
+    object-position: top;
+  }
+
+  .hero h1 {
+    font-size: 1.75rem !important;
+  }
+
+  .hero .tagline {
+    font-size: 0.95rem;
+  }
+
+  .hero a.action.primary,
+  .hero a[data-type="primary"],
+  .hero a.action.minimal,
+  .hero a[data-type="minimal"] {
+    padding: 0.6rem 1.5rem;
+    font-size: 0.875rem;
   }
 }
 
