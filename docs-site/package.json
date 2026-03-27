@@ -1,0 +1,17 @@
+{
+  "name": "docs-site",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@astrojs/starlight": "^0.38.2",
+    "astro": "^6.1.1"
+  }
+}
