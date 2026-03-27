@@ -5,6 +5,9 @@ template: splash
 hero:
   title: SoftDB Docs
   tagline: Connect to PostgreSQL, MySQL, SQLite, MongoDB, Redis, and more — with a beautiful cross-platform desktop app.
+  image:
+    file: ../../assets/screenshots/connection-hub.png
+    alt: SoftDB Connection Hub showing database connections
   actions:
     - text: Get Started
       link: /getting-started/introduction/
@@ -14,3 +17,33 @@ hero:
       variant: minimal
       icon: external
 ---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Features
+
+<CardGrid>
+  <Card title="Multi-Database Support" icon="list-format">
+    Connect to PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift, and Redis from a single app.
+  </Card>
+  <Card title="AI Assistant" icon="star">
+    Built-in AI chat with database schema context. Get SQL suggestions and query optimization powered by GPT.
+  </Card>
+  <Card title="Monaco SQL Editor" icon="pencil">
+    Full-featured SQL editor with syntax highlighting, dynamic column autocomplete, and multi-tab queries.
+  </Card>
+  <Card title="Visual Table Explorer" icon="open-book">
+    Browse schemas, tables, and columns with a virtualized data grid and visual structure designer.
+  </Card>
+</CardGrid>
+
+## Supported Databases
+
+<CardGrid>
+  <Card title="PostgreSQL" icon="approve-check">Full support with multi-database browsing</Card>
+  <Card title="MySQL / MariaDB" icon="approve-check">Full support with multi-database browsing</Card>
+  <Card title="SQLite" icon="approve-check">Open and manage SQLite database files directly</Card>
+  <Card title="MongoDB" icon="approve-check">Collection browsing, JSON Schema validation editor</Card>
+  <Card title="Redshift" icon="approve-check">Connect to Amazon Redshift clusters</Card>
+  <Card title="Redis" icon="approve-check">Key-value browsing and management</Card>
+</CardGrid>
