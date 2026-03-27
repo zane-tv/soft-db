@@ -39,18 +39,58 @@ Grab the latest release from the [GitHub Releases page](https://github.com/zane-
     <Steps>
       1. Download `SoftDB-darwin-arm64.dmg` from the Releases page.
 
-      2. Open the `.dmg` file and drag **SoftDB** to your Applications folder.
+      2. Open the `.dmg` file and drag **SoftDB** to your **Applications** folder.
 
-      3. On first launch, macOS may block the app because it's from an unidentified developer. Open **System Settings → Privacy & Security** and click **Open Anyway**.
-
-      4. Launch SoftDB from Applications or Spotlight.
+      3. Launch SoftDB from Applications or Spotlight.
     </Steps>
 
-    Alternatively, install via Homebrew:
+    ### Allowing SoftDB on macOS
+
+    Because SoftDB is distributed outside the Mac App Store and is not yet notarized by Apple, macOS Gatekeeper will block it on first launch. You'll see a message like **"SoftDB can't be opened because Apple cannot check it for malicious software"** or **"SoftDB is damaged and can't be opened"**.
+
+    There are two ways to fix this:
+
+    **Method 1 — System Settings (recommended)**
+
+    <Steps>
+      1. Try to open SoftDB — macOS will block it. Click **OK** to dismiss the dialog.
+
+      2. Open **System Settings → Privacy & Security**.
+
+      3. Scroll down. You'll see a message: **"SoftDB was blocked from use because it is not from an identified developer."**
+
+      4. Click **Open Anyway** and enter your password when prompted.
+
+      5. macOS will ask one more time — click **Open** to confirm. SoftDB will launch normally from now on.
+    </Steps>
+
+    **Method 2 — Terminal (if Method 1 doesn't work)**
+
+    If you see the **"damaged and can't be opened"** error, macOS has quarantined the file. Remove the quarantine flag with:
+
+    ```bash
+    xattr -cr /Applications/SoftDB.app
+    ```
+
+    Then open SoftDB again — it should launch without issues.
+
+    <Aside type="tip">
+      If you install via **Homebrew** (below), Gatekeeper is bypassed automatically — no extra steps needed.
+    </Aside>
+
+    ### Install via Homebrew
+
+    The easiest way to install on macOS — no Gatekeeper prompts:
 
     ```bash
     brew tap zane-tv/softdb
     brew install --cask softdb
+    ```
+
+    To update later:
+
+    ```bash
+    brew upgrade --cask softdb
     ```
   </TabItem>
 
