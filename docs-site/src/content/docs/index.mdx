@@ -32,6 +32,9 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
   <Card title="AI-Powered" icon="star">
     Built-in AI assistant understands your schema. Powered by OpenAI. Get context-aware SQL instantly.
   </Card>
+  <Card title="MCP Server" icon="rocket">
+    Built-in MCP server lets Claude, Cursor, and Windsurf query your databases directly. One config line to connect.
+  </Card>
   <Card title="Secure by Default" icon="approve-check">
     AES-256-GCM encrypted credentials, parameterized queries, OAuth PKCE, and SSH tunneling support.
   </Card>
@@ -57,6 +60,7 @@ Chat with an AI that knows your database schema. Use @table mentions to include 
 ![AI Assistant](../../assets/screenshots/ai-chat.png)
 
 <LinkCard title="AI Assistant Guide" href="/features/ai-assistant/" description="Setup providers, use schema context, optimize queries" />
+<LinkCard title="MCP Server" href="/features/mcp-server/" description="Let Claude, Cursor, Windsurf access your databases via MCP" />
 
 ### Data Grid & Table Explorer
 
@@ -126,6 +130,7 @@ Virtualized data grid with inline cell editing, sorting, filtering, and paginati
 | **Query Builder** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **SSH Tunneling** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Import / Export** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **MCP Server** | ✅ Built-in | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Safe Mode** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Inline Editing** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **App Size** | ~30 MB | ~400 MB | ~800 MB | ~50 MB | ~200 MB | ~150 MB |

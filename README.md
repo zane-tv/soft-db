@@ -48,6 +48,7 @@
 - 🖥️ **Custom App Bar** — Frameless window with custom title bar and window controls
 - 🌙 **Dark Mode** — Beautiful dark UI designed for long coding sessions
 - 🔐 **Security First** — Parameterized queries, encrypted credential storage, OAuth PKCE authentication
+- 🔌 **MCP Server** — Built-in MCP server lets AI tools (Claude, Cursor, Windsurf) browse schemas, run queries, and explore your databases
 
 ## 🗃️ Supported Databases
 
@@ -69,6 +70,82 @@ SoftDB includes a built-in AI chat assistant powered by OpenAI:
 - **Multi-model** — Choose from GPT-5.3 Codex (default, optimized for SQL), GPT-5.4, GPT-5, GPT-5 Mini, o4-mini, and more
 - **Streaming** — Real-time response streaming via Wails events
 - **Per-connection isolation** — Each connection tab has its own chat history
+
+## 🔌 MCP Server
+
+SoftDB ships with a built-in [MCP](https://modelcontextprotocol.io/) server. Enable it in **Settings → MCP Server**, then paste the config into your AI tool:
+
+<details>
+<summary><strong>Claude Desktop</strong></summary>
+
+Add to `~/.config/claude/claude_desktop_config.json` (macOS/Linux) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "softdb": {
+      "url": "http://localhost:9090/mcp"
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><strong>Cursor</strong></summary>
+
+Add to `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "softdb": {
+      "url": "http://localhost:9090/mcp"
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><strong>Windsurf</strong></summary>
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "softdb": {
+      "url": "http://localhost:9090/mcp"
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><strong>Stdio mode (any MCP client)</strong></summary>
+
+Build the standalone binary and point your MCP client to it:
+
+```bash
+go build -o softdb-mcp ./cmd/mcp/
+```
+
+```json
+{
+  "mcpServers": {
+    "softdb": {
+      "command": "./softdb-mcp"
+    }
+  }
+}
+```
+</details>
+
+**8 tools available:** `list_connections`, `use_connection`, `list_databases`, `list_tables`, `describe_table`, `execute_query`, `read_table`, `get_relationships`
+
+**Safety:** Per-connection Safe Mode blocks destructive queries. Credentials never exposed to AI agents. Results capped at 1000 rows.
 
 ## 🚀 Quick Start
 
@@ -158,6 +235,7 @@ soft-db/
 │   └── import_service       # Database & workspace import
 │   ├── settings_service     # User preferences
 │   ├── ai_service           # AI chat proxy with streaming
+│   ├── mcp_service          # MCP server with 8 database tools
 │   └── oauth_service        # OAuth 2.0 PKCE for ChatGPT
 ├── internal/
 │   ├── driver/              # Database drivers (Postgres, MySQL, SQLite, MongoDB, Redshift, Redis)

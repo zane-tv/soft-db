@@ -1,0 +1,175 @@
+---
+title: MCP Server
+description: Let AI agents (Claude, Cursor, Windsurf) connect to your databases via MCP protocol
+---
+
+import { Aside, Steps, Tabs, TabItem, Code } from '@astrojs/starlight/components';
+
+SoftDB includes a built-in MCP (Model Context Protocol) server that lets AI coding assistants — Claude Desktop, Cursor, Windsurf, and others — directly browse your database schemas, execute queries, and explore relationships. No copy-pasting schemas into chat. The AI just _knows_ your database.
+
+## Quick Setup
+
+Pick your AI tool and paste the config:
+
+<Tabs>
+  <TabItem label="Claude Desktop">
+    Add to `~/.config/claude/claude_desktop_config.json` (macOS/Linux) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+    ```json
+    {
+      "mcpServers": {
+        "softdb": {
+          "url": "http://localhost:9090/mcp"
+        }
+      }
+    }
+    ```
+
+    Restart Claude Desktop after saving.
+  </TabItem>
+  <TabItem label="Cursor">
+    Add to `.cursor/mcp.json` in your project root:
+
+    ```json
+    {
+      "mcpServers": {
+        "softdb": {
+          "url": "http://localhost:9090/mcp"
+        }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="Windsurf">
+    Add to `~/.codeium/windsurf/mcp_config.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "softdb": {
+          "url": "http://localhost:9090/mcp"
+        }
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="Stdio (any MCP client)">
+    For MCP clients that support stdio transport:
+
+    ```json
+    {
+      "mcpServers": {
+        "softdb": {
+          "command": "/path/to/softdb-mcp"
+        }
+      }
+    }
+    ```
+
+    Build the binary: `go build -o softdb-mcp ./cmd/mcp/`
+  </TabItem>
+</Tabs>
+
+<Aside type="tip">
+The HTTP server runs on port **9090** by default. You can change it in **Settings → MCP Server → Server Port**.
+</Aside>
+
+## Enabling the MCP Server
+
+<Steps>
+1. Open SoftDB and go to **Settings** (gear icon in the toolbar).
+
+2. Click **MCP Server** in the sidebar.
+
+3. Toggle **Enable MCP Server** on. The status indicator turns green and shows the active port.
+
+4. Copy the config snippet shown in the settings panel and paste it into your AI tool's MCP config file.
+
+5. Restart your AI tool. It will connect to SoftDB automatically.
+</Steps>
+
+## Available Tools
+
+Once connected, the AI agent has access to 8 database tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_connections` | List all MCP-enabled database connections |
+| `use_connection` | Set the active connection (auto-connects if needed) |
+| `list_databases` | List databases on the active connection |
+| `list_tables` | List tables, optionally in a specific database |
+| `describe_table` | Get column definitions — name, type, nullable, PK, default |
+| `execute_query` | Run SQL, MongoDB JSON queries, or Redis commands |
+| `read_table` | Paginated table data browsing |
+| `get_relationships` | Foreign key relationships between tables |
+
+## Per-Connection Access Control
+
+Not every database should be visible to AI. SoftDB lets you control which connections the MCP server can access:
+
+- In the **Connection Hub**, hover over a connection card to reveal the **MCP icon** (hub icon).
+- Click it to toggle MCP access for that connection.
+- Disabled connections are hidden from `list_connections` and cannot be used by AI agents.
+
+All connections are MCP-enabled by default.
+
+## Safety
+
+MCP inherits SoftDB's per-connection **Safe Mode**:
+
+- When Safe Mode is on, `execute_query` blocks destructive operations — `DROP`, `TRUNCATE`, `DELETE` without `WHERE`, `UPDATE` without `WHERE`.
+- The AI agent receives a clear error explaining why the query was blocked.
+- Query results are capped at **1000 rows** to prevent oversized responses.
+- **Credentials are never exposed** — the AI only sees connection names, types, and hosts. Passwords, SSH keys, and URIs are stripped from all responses.
+
+<Aside type="caution">
+The MCP server listens on `localhost` only and has no authentication. Do not expose the port to the network. This is designed for local AI tools running on the same machine.
+</Aside>
+
+## Two Transport Modes
+
+### HTTP (in-app)
+
+When the SoftDB app is running with MCP enabled, it serves an HTTP endpoint on `http://localhost:{port}/mcp`. AI tools connect via HTTP. You control it from the Settings UI — toggle on/off, change port, see status.
+
+### Stdio (headless)
+
+For CI/automation or when you don't want the GUI, build and run the standalone binary:
+
+```bash
+go build -o softdb-mcp ./cmd/mcp/
+```
+
+Configure your AI tool to spawn it as a subprocess:
+
+```json
+{
+  "mcpServers": {
+    "softdb": {
+      "command": "./softdb-mcp"
+    }
+  }
+}
+```
+
+The stdio binary reads your saved connections from the same config directory as the app (`~/.config/SoftDB/`).
+
+## Example Conversation
+
+Once MCP is connected, you can ask your AI assistant things like:
+
+> "Show me all tables in the production database"
+
+The AI calls `use_connection` → `list_tables` and returns the result.
+
+> "What columns does the users table have?"
+
+The AI calls `describe_table` with `table: "users"` and formats the schema.
+
+> "Find all orders placed in the last 7 days with total > $100"
+
+The AI calls `execute_query` with the appropriate SQL, gets the results, and presents them.
+
+> "How are the orders and products tables related?"
+
+The AI calls `get_relationships` and explains the foreign key structure.

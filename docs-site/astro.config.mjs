@@ -39,6 +39,7 @@ export default defineConfig({
             { label: 'Import & Export', slug: 'features/import-export' },
             { label: 'Keyboard Shortcuts', slug: 'features/keyboard-shortcuts' },
             { label: 'Safe Mode', slug: 'features/safe-mode' },
+            { label: 'MCP Server', slug: 'features/mcp-server' },
           ],
         },
         {
