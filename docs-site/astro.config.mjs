@@ -27,16 +27,49 @@ export default defineConfig({
           ],
         },
         {
-          label: 'Guides',
-          autogenerate: { directory: 'guides' },
+          label: 'Features',
+          items: [
+            { label: 'SQL Editor', slug: 'features/sql-editor' },
+            { label: 'Data Grid', slug: 'features/data-grid' },
+            { label: 'AI Assistant', slug: 'features/ai-assistant' },
+            { label: 'Table Structure', slug: 'features/table-structure' },
+            { label: 'ER Diagram', slug: 'features/er-diagram' },
+            { label: 'Query Builder', slug: 'features/query-builder' },
+            { label: 'Query History & Snippets', slug: 'features/query-history' },
+            { label: 'Import & Export', slug: 'features/import-export' },
+            { label: 'Keyboard Shortcuts', slug: 'features/keyboard-shortcuts' },
+            { label: 'Safe Mode', slug: 'features/safe-mode' },
+          ],
         },
         {
           label: 'Databases',
-          autogenerate: { directory: 'databases' },
+          items: [
+            { label: 'Connection Management', slug: 'databases/overview' },
+            { label: 'PostgreSQL', slug: 'databases/postgresql' },
+            { label: 'MySQL / MariaDB', slug: 'databases/mysql' },
+            { label: 'SQLite', slug: 'databases/sqlite' },
+            { label: 'MongoDB', slug: 'databases/mongodb' },
+            { label: 'Redshift', slug: 'databases/redshift' },
+            { label: 'Redis', slug: 'databases/redis' },
+            { label: 'SSH Tunneling', slug: 'databases/ssh-tunneling' },
+          ],
+        },
+        {
+          label: 'Customization',
+          items: [
+            { label: 'Settings Overview', slug: 'customization/settings' },
+            { label: 'Appearance', slug: 'customization/appearance' },
+          ],
         },
         {
           label: 'Reference',
           autogenerate: { directory: 'reference' },
+        },
+        {
+          label: 'Security',
+          items: [
+            { label: 'Security & Encryption', slug: 'security/security' },
+          ],
         },
       ],
       customCss: ['./src/styles/custom.css'],
