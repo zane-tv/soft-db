@@ -1,11 +1,9 @@
 /* Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-/* Dark theme (default) - SoftDB brand */
 :root {
   --sl-font: 'IBM Plex Sans', sans-serif;
   --sl-font-mono: 'JetBrains Mono', monospace;
-
   --sl-color-bg: #0F172A;
   --sl-color-bg-nav: #0F172A;
   --sl-color-bg-sidebar: #0F172A;
@@ -25,11 +23,20 @@
   --sl-color-text-accent: #22C55E;
 }
 
-/* Light theme overrides */
 :root[data-theme='light'] {
   --sl-color-bg: #FAFBFC;
   --sl-color-bg-nav: #FFFFFF;
   --sl-color-bg-sidebar: #F8FAFC;
+  --sl-color-hairline-light: #E2E8F0;
+  --sl-color-hairline: #CBD5E1;
+  --sl-color-white: #0F172A;
+  --sl-color-gray-1: #1E293B;
+  --sl-color-gray-2: #334155;
+  --sl-color-gray-3: #475569;
+  --sl-color-gray-4: #94A3B8;
+  --sl-color-gray-5: #CBD5E1;
+  --sl-color-gray-6: #F1F5F9;
+  --sl-color-black: #F8FAFC;
   --sl-color-accent-low: #DCFCE7;
   --sl-color-accent: #16A34A;
   --sl-color-accent-high: #052E16;
