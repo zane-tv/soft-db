@@ -52,7 +52,7 @@ Key = PBKDF2-SHA256(pepper="softdb-local-encryption-v2", salt=<random 32 bytes>,
 | Connection hostnames, usernames, ports | No |
 
 <Aside type="caution">
-AI API keys (OpenAI, Anthropic, Ollama) are stored in plain text in the settings JSON. Don't store sensitive production API keys on shared machines. Use OAuth login for OpenAI when possible — OAuth tokens are encrypted.
+AI API keys are stored in plain text in the settings JSON. Don't store sensitive production API keys on shared machines. Use OAuth login for OpenAI when possible — OAuth tokens are encrypted.
 </Aside>
 
 ### Migration from Legacy Encryption

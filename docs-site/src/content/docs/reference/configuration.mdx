@@ -67,9 +67,9 @@ All defaults listed here come directly from `DefaultSettings()` in `services/set
 
 | Setting | Key | Default | Description |
 |---------|-----|---------|-------------|
-| AI provider | `aiProvider` | `"openai"` | Which AI backend to use for the AI Assistant. Options: `"openai"`, `"anthropic"`, `"ollama"`. |
-| AI API key | `aiApiKey` | `""` | API key for the selected provider. Required for OpenAI and Anthropic. Leave empty when using OAuth login or Ollama. |
-| AI base URL | `aiBaseUrl` | `""` | Custom API base URL. Useful for self-hosted Ollama instances or OpenAI-compatible proxies. |
+| AI provider | `aiProvider` | `"openai"` | AI backend for the AI Assistant. Currently supports `"openai"`. |
+| AI API key | `aiApiKey` | `""` | OpenAI API key. Leave empty when using OAuth login (recommended). |
+| AI base URL | `aiBaseUrl` | `""` | Custom API base URL. Useful for OpenAI-compatible proxies. |
 | AI model | `aiModel` | `"gpt-5.3-codex"` | Model identifier to use for AI chat. Must be a valid model name for the selected provider. |
 
 <Aside type="caution">

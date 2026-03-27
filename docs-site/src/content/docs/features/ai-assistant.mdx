@@ -1,6 +1,6 @@
 ---
 title: AI Assistant
-description: Built-in AI chat with schema context, supporting OpenAI, Anthropic, and Ollama
+description: Built-in AI chat with schema context, powered by OpenAI
 ---
 
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
@@ -9,32 +9,18 @@ SoftDB includes a built-in AI chat panel that understands your database schema. 
 
 ![AI chat panel with a query response](../../../assets/screenshots/ai-chat.png)
 
-## Supported Providers
+## OpenAI Integration
 
-The AI Assistant works with three providers. You can switch between them in **Settings > AI**.
+The AI Assistant is powered by OpenAI. Sign in with your ChatGPT account using OAuth — no API key needed. SoftDB uses OAuth PKCE so your credentials stay secure. Your tokens are stored encrypted on your machine and never sent to any SoftDB server.
 
-<Tabs>
-  <TabItem label="OpenAI (ChatGPT)">
-    Sign in with your ChatGPT account using OAuth. No API key needed — SoftDB uses OAuth PKCE so your credentials stay secure. Your tokens are stored encrypted on your machine and never sent to any SoftDB server.
-
-    Available models include GPT-5.3 Codex (default, optimized for SQL), GPT-5.4, GPT-5, GPT-5 Mini, and o4-mini for reasoning tasks.
-  </TabItem>
-  <TabItem label="Anthropic">
-    Provide your Anthropic API key in **Settings > AI > API Key**. Claude models are available once the key is configured.
-  </TabItem>
-  <TabItem label="Ollama (Local)">
-    Run models locally with [Ollama](https://ollama.com). No account or API key required — completely free and private. Set the base URL to `http://localhost:11434` (the default) and select any model you've pulled.
-
-    Good for: privacy-sensitive databases, offline use, or experimenting without API costs.
-  </TabItem>
-</Tabs>
+Available models include GPT-5.3 Codex (default, optimized for SQL), GPT-5.4, GPT-5, GPT-5 Mini, and o4-mini for reasoning tasks.
 
 ## Setup
 
 <Steps>
 1. Click the **✨ sparkle icon** in the top-right toolbar to open the AI panel.
 
-2. Sign in or configure your provider. For OpenAI, click **Sign in with ChatGPT** and complete the browser OAuth flow. For Anthropic or Ollama, go to **Settings > AI** and enter your API key or base URL.
+2. Click **Sign in with ChatGPT** and complete the browser OAuth flow. Your tokens are encrypted and stored locally.
 
 3. Select a model from the dropdown in the panel header. The dropdown groups models by category: Code, General, Fast, and Reasoning.
 </Steps>

@@ -33,7 +33,7 @@
 
 - 🗄️ **Multi-Database Support** — PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift, Redis
 - 🔀 **Multi-Database Browsing** — Browse all databases on a server with a 3-level tree (Connection → Database → Tables)
-- 🤖 **AI Assistant** — Built-in chatbot with DB schema context, streaming responses, support for OpenAI, Anthropic, and local Ollama models
+- 🤖 **AI Assistant** — Built-in ChatGPT-powered chatbot with DB schema context, streaming responses, and per-connection chat history
 - 📝 **Monaco SQL Editor** — Syntax highlighting, dynamic column autocomplete, multi-tab queries
 - 🔍 **Visual Table Explorer** — Browse schemas, tables, and columns with virtualized data grid
 - 🏗️ **Structure Designer** — Create and modify tables visually; MongoDB gets a native JSON Schema Validation editor
@@ -63,10 +63,10 @@
 
 ## 🤖 AI Assistant
 
-SoftDB includes a built-in AI chat assistant with multi-provider support:
+SoftDB includes a built-in AI chat assistant powered by OpenAI:
 
 - **DB-aware context** — Automatically injects your schema (tables, columns, types) into the AI prompt
-- **Multi-provider** — OpenAI (GPT-4o, GPT-5.3 Codex), Anthropic (Claude), and Ollama (local, free)
+- **Multi-model** — Choose from GPT-5.3 Codex (default, optimized for SQL), GPT-5.4, GPT-5, GPT-5 Mini, o4-mini, and more
 - **Streaming** — Real-time response streaming via Wails events
 - **Per-connection isolation** — Each connection tab has its own chat history
 
@@ -142,7 +142,7 @@ wails3 build
 | **State** | TanStack Query |
 | **Styling** | Tailwind CSS |
 | **Encryption** | AES-256-GCM (credentials & OAuth tokens) |
-| **AI** | OpenAI, Anthropic, Ollama |
+| **AI** | OpenAI API |
 
 ## 📁 Project Structure
 
