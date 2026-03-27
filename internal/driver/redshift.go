@@ -210,6 +210,116 @@ func (d *RedshiftDriver) Functions(ctx context.Context) ([]FunctionInfo, error) 
 func (d *RedshiftDriver) Type() DatabaseType { return Redshift }
 func (d *RedshiftDriver) IsConnected() bool  { return d.db != nil }
 
+func (d *RedshiftDriver) GetStructureChangeCapabilities(ctx context.Context) (*StructureChangeCapabilities, error) {
+	return &StructureChangeCapabilities{
+		DatabaseType: Redshift,
+		GeneralNotes: []StructureCapabilityNote{{
+			Code:     "redshift_limited_ddl",
+			Message:  "Redshift DDL support is narrower than PostgreSQL and multi-statement apply should be reviewed carefully",
+			Severity: "warning",
+		}},
+		CreateTable:  StructureOperationCapability{Supported: true},
+		AddColumn:    StructureOperationCapability{Supported: true},
+		RenameColumn: StructureOperationCapability{Supported: true},
+		AlterColumnType: StructureOperationCapability{
+			Supported:            true,
+			RequiresConfirmation: true,
+			Notes: []StructureCapabilityNote{{
+				Code:     "redshift_type_change_limits",
+				Message:  "Redshift type changes are limited to specific conversions and may fail on existing data",
+				Severity: "warning",
+			}},
+		},
+		AlterColumnDefault:     StructureOperationCapability{Supported: false},
+		AlterColumnNullability: StructureOperationCapability{Supported: false},
+		DropColumn: StructureOperationCapability{
+			Supported:            true,
+			Destructive:          true,
+			RequiresConfirmation: true,
+		},
+	}, nil
+}
+
+// ─── ExportableDriver implementation ───
+
+var _ ExportableDriver = (*RedshiftDriver)(nil)
+
+func (d *RedshiftDriver) GetTableRowCount(table string) (int64, error) {
+	if d.db == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+
+	var count int64
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM "%s"`, table)
+	if err := d.db.QueryRow(query).Scan(&count); err != nil {
+		return 0, fmt.Errorf("row count %q: %w", table, err)
+	}
+	return count, nil
+}
+
+func (d *RedshiftDriver) GetTableRows(table string, limit, offset int) (*QueryResult, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	start := time.Now()
+	query := fmt.Sprintf(`SELECT * FROM "%s" LIMIT $1 OFFSET $2`, table)
+	rows, err := d.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("table rows %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	return scanRows(rows, start)
+}
+
+func (d *RedshiftDriver) GetCreateTableDDL(table string) (string, error) {
+	if d.db == nil {
+		return "", fmt.Errorf("not connected")
+	}
+
+	query := `SELECT column_name, data_type, character_maximum_length,
+			is_nullable, column_default
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = $1
+		ORDER BY ordinal_position`
+
+	rows, err := d.db.Query(query, table)
+	if err != nil {
+		return "", fmt.Errorf("create table DDL %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var name, dataType, nullable string
+		var maxLen sql.NullInt64
+		var defaultVal sql.NullString
+		if err := rows.Scan(&name, &dataType, &maxLen, &nullable, &defaultVal); err != nil {
+			return "", fmt.Errorf("scan column %q: %w", table, err)
+		}
+
+		colDef := fmt.Sprintf("  \"%s\" %s", name, dataType)
+		if maxLen.Valid {
+			colDef += fmt.Sprintf("(%d)", maxLen.Int64)
+		}
+		if nullable == "NO" {
+			colDef += " NOT NULL"
+		}
+		if defaultVal.Valid {
+			colDef += " DEFAULT " + defaultVal.String
+		}
+		cols = append(cols, colDef)
+	}
+
+	if len(cols) == 0 {
+		return "", fmt.Errorf("table %q not found or has no columns", table)
+	}
+
+	ddl := fmt.Sprintf("CREATE TABLE \"%s\" (\n%s\n);", table, strings.Join(cols, ",\n"))
+	return ddl, nil
+}
+
 // ─── MultiDatabaseDriver implementation ───
 
 func (d *RedshiftDriver) Databases(ctx context.Context) ([]DatabaseInfo, error) {

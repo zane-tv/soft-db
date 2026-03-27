@@ -13,6 +13,8 @@ import { ConnectionModal } from '@/components/ConnectionModal'
 import { SettingsModal } from '@/components/SettingsModal'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ChangelogModal } from '@/components/ChangelogModal'
+import { ExportModal } from '@/components/ExportModal'
+import { ImportModal } from '@/components/ImportModal'
 import { useUpdate } from '@/hooks/useUpdate'
 
 // ─── Date Formatter ───
@@ -78,6 +80,8 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [changelogOpen, setChangelogOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [deletingConn, setDeletingConn] = useState<ConnectionConfig | null>(null)
 
   const { data: connections = [], isLoading } = useConnections()
@@ -156,6 +160,24 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
             <h1 className="font-bold text-lg tracking-tight text-text-main">SoftDB</h1>
           </div>
           <div className="flex items-center gap-1">
+            {/* Export Workspace */}
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              className="flex items-center justify-center size-9 rounded-lg text-text-muted hover:text-text-main hover:bg-white/5 transition-all duration-200"
+              title={t('hub.exportWorkspace')}
+            >
+              <span className="material-symbols-outlined text-[20px]">download</span>
+            </button>
+            {/* Import Workspace */}
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="flex items-center justify-center size-9 rounded-lg text-text-muted hover:text-text-main hover:bg-white/5 transition-all duration-200"
+              title={t('hub.importWorkspace')}
+            >
+              <span className="material-symbols-outlined text-[20px]">upload</span>
+            </button>
             {/* Changelog / Update Bell */}
             <button
               onClick={() => setChangelogOpen(true)}
@@ -418,6 +440,9 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
         onClose={() => setChangelogOpen(false)}
         lang={(settingsData?.language as 'en' | 'vi') ?? 'en'}
       />
+
+      <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} mode="workspace" />
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} mode="workspace" />
     </>
   )
 }

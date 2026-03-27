@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"soft-db/internal/crypto"
@@ -18,6 +19,12 @@ import (
 type Store struct {
 	db *sql.DB
 }
+
+const (
+	snippetScopeAll        = "all"
+	snippetScopeGlobal     = "global"
+	snippetScopeConnection = "connection"
+)
 
 // New creates and initializes the local store
 func New() (*Store, error) {
@@ -33,6 +40,15 @@ func New() (*Store, error) {
 	}
 
 	dbPath := filepath.Join(appDir, "softdb.sqlite")
+	return newAtPath(dbPath)
+}
+
+// NewWithDir creates a store at the given directory path.
+func NewWithDir(dir string) (*Store, error) {
+	return newAtPath(filepath.Join(dir, "softdb.sqlite"))
+}
+
+func newAtPath(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open store: %w", err)
@@ -109,6 +125,14 @@ func (s *Store) migrate() error {
 		return err
 	}
 
+	if err := s.addColumnIfMissing("snippets", "folder_path", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	if _, err := s.db.Exec(`UPDATE snippets SET connection_id = '' WHERE connection_id IS NULL`); err != nil {
+		return err
+	}
+
 	// AI Chatbox tables
 	_, err = s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS oauth_tokens (
@@ -133,6 +157,46 @@ func (s *Store) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at);
 	`)
 	return err
+}
+
+func (s *Store) addColumnIfMissing(tableName string, columnName string, definition string) error {
+	exists, err := s.columnExists(tableName, columnName)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, definition))
+	return err
+}
+
+func (s *Store) columnExists(tableName string, columnName string) (bool, error) {
+	rows, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			dataType   string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultVal, &pk); err != nil {
+			return false, err
+		}
+		if name == columnName {
+			return true, nil
+		}
+	}
+
+	return false, rows.Err()
 }
 
 // ─── Connection CRUD ───
@@ -262,55 +326,303 @@ func (s *Store) ListHistory(connectionID string, limit int) ([]HistoryEntry, err
 type Snippet struct {
 	ID           int      `json:"id"`
 	ConnectionID string   `json:"connectionId"`
+	Scope        string   `json:"scope"`
 	Title        string   `json:"title"`
 	QueryText    string   `json:"queryText"`
 	Tags         []string `json:"tags"`
+	FolderPath   string   `json:"folderPath"`
 	CreatedAt    string   `json:"createdAt"`
+	UpdatedAt    string   `json:"updatedAt"`
 }
 
-func (s *Store) SaveSnippet(snippet Snippet) error {
-	// Prevent duplicate snippets (same connection + same query text)
-	var count int
-	s.db.QueryRow(`SELECT COUNT(*) FROM snippets WHERE connection_id = ? AND query_text = ?`,
-		snippet.ConnectionID, snippet.QueryText).Scan(&count)
-	if count > 0 {
-		return nil // already saved
+type SnippetListFilter struct {
+	ConnectionID string   `json:"connectionId"`
+	Scope        string   `json:"scope"`
+	FolderPath   string   `json:"folderPath"`
+	Tags         []string `json:"tags"`
+}
+
+func (s *Store) CreateSnippet(snippet Snippet) (Snippet, error) {
+	snippet = normalizeSnippet(snippet)
+	tagsJSON, err := json.Marshal(snippet.Tags)
+	if err != nil {
+		return Snippet{}, err
 	}
 
-	tagsJSON, _ := json.Marshal(snippet.Tags)
-	_, err := s.db.Exec(`
-		INSERT INTO snippets (connection_id, title, query_text, tags)
-		VALUES (?, ?, ?, ?)`,
-		snippet.ConnectionID, snippet.Title, snippet.QueryText, string(tagsJSON))
-	return err
+	result, err := s.db.Exec(`
+		INSERT INTO snippets (connection_id, title, query_text, tags, folder_path)
+		VALUES (?, ?, ?, ?, ?)`,
+		snippet.ConnectionID, snippet.Title, snippet.QueryText, string(tagsJSON), snippet.FolderPath)
+	if err != nil {
+		return Snippet{}, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return Snippet{}, err
+	}
+
+	return s.getSnippetByID(int(id))
 }
 
-func (s *Store) ListSnippets(connectionID string) ([]Snippet, error) {
-	rows, err := s.db.Query(`
-		SELECT id, COALESCE(connection_id, ''), title, query_text, tags, created_at
-		FROM snippets WHERE connection_id = ? OR connection_id = ''
-		ORDER BY created_at DESC`, connectionID)
+func (s *Store) UpdateSnippet(accessConnectionID string, snippet Snippet) (Snippet, error) {
+	if snippet.ID <= 0 {
+		return Snippet{}, fmt.Errorf("snippet id is required")
+	}
+
+	snippet = normalizeSnippet(snippet)
+	tagsJSON, err := json.Marshal(snippet.Tags)
+	if err != nil {
+		return Snippet{}, err
+	}
+
+	args := append([]any{
+		snippet.ConnectionID,
+		snippet.Title,
+		snippet.QueryText,
+		string(tagsJSON),
+		snippet.FolderPath,
+		snippet.ID,
+	}, snippetAccessArgs(accessConnectionID)...)
+
+	result, err := s.db.Exec(`
+		UPDATE snippets
+		SET connection_id = ?, title = ?, query_text = ?, tags = ?, folder_path = ?, updated_at = datetime('now')
+		WHERE id = ? AND `+snippetAccessClause(accessConnectionID),
+		args...)
+	if err != nil {
+		return Snippet{}, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Snippet{}, err
+	}
+	if rowsAffected == 0 {
+		return Snippet{}, fmt.Errorf("snippet %d not found", snippet.ID)
+	}
+
+	return s.getSnippetByID(snippet.ID)
+}
+
+func (s *Store) MoveSnippet(accessConnectionID string, id int, folderPath string) (Snippet, error) {
+	if id <= 0 {
+		return Snippet{}, fmt.Errorf("snippet id is required")
+	}
+
+	args := append([]any{strings.TrimSpace(folderPath), id}, snippetAccessArgs(accessConnectionID)...)
+
+	result, err := s.db.Exec(`
+		UPDATE snippets
+		SET folder_path = ?, updated_at = datetime('now')
+		WHERE id = ? AND `+snippetAccessClause(accessConnectionID),
+		args...)
+	if err != nil {
+		return Snippet{}, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Snippet{}, err
+	}
+	if rowsAffected == 0 {
+		return Snippet{}, fmt.Errorf("snippet %d not found", id)
+	}
+
+	return s.getSnippetByID(id)
+}
+
+func (s *Store) ListSnippetsWithFilter(filter SnippetListFilter) ([]Snippet, error) {
+	filter = normalizeSnippetListFilter(filter)
+
+	query := `
+		SELECT id, COALESCE(connection_id, ''), title, query_text, tags, COALESCE(folder_path, ''), created_at, COALESCE(updated_at, created_at)
+		FROM snippets`
+	conditions := make([]string, 0, 3)
+	args := make([]any, 0, 4)
+
+	switch filter.Scope {
+	case snippetScopeGlobal:
+		conditions = append(conditions, `COALESCE(connection_id, '') = ''`)
+	case snippetScopeConnection:
+		conditions = append(conditions, `COALESCE(connection_id, '') = ?`)
+		args = append(args, filter.ConnectionID)
+	default:
+		conditions = append(conditions, `(COALESCE(connection_id, '') = '' OR COALESCE(connection_id, '') = ?)`)
+		args = append(args, filter.ConnectionID)
+	}
+
+	if filter.FolderPath != "" {
+		conditions = append(conditions, `COALESCE(folder_path, '') = ?`)
+		args = append(args, filter.FolderPath)
+	}
+
+	if len(conditions) > 0 {
+		query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+
+	query += ` ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC`
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var snippets []Snippet
+	snippets := make([]Snippet, 0)
 	for rows.Next() {
-		var sn Snippet
-		var tagsStr string
-		if err := rows.Scan(&sn.ID, &sn.ConnectionID, &sn.Title, &sn.QueryText, &tagsStr, &sn.CreatedAt); err != nil {
+		snippet, err := scanSnippet(rows)
+		if err != nil {
 			return nil, err
 		}
-		json.Unmarshal([]byte(tagsStr), &sn.Tags)
-		snippets = append(snippets, sn)
+		snippets = append(snippets, snippet)
 	}
-	return snippets, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(filter.Tags) == 0 {
+		return snippets, nil
+	}
+
+	filtered := make([]Snippet, 0, len(snippets))
+	for _, snippet := range snippets {
+		if snippetHasTags(snippet, filter.Tags) {
+			filtered = append(filtered, snippet)
+		}
+	}
+	return filtered, nil
+}
+
+func (s *Store) SaveSnippet(snippet Snippet) error {
+	if snippet.ID > 0 {
+		_, err := s.UpdateSnippet(snippet.ConnectionID, snippet)
+		return err
+	}
+
+	_, err := s.CreateSnippet(snippet)
+	return err
+}
+
+func (s *Store) ListSnippets(connectionID string) ([]Snippet, error) {
+	return s.ListSnippetsWithFilter(SnippetListFilter{ConnectionID: connectionID})
+}
+
+func (s *Store) DeleteSnippetForConnection(accessConnectionID string, id int) error {
+	if id <= 0 {
+		return fmt.Errorf("snippet id is required")
+	}
+
+	result, err := s.db.Exec(`DELETE FROM snippets WHERE id = ? AND `+snippetAccessClause(accessConnectionID), append([]any{id}, snippetAccessArgs(accessConnectionID)...)...)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("snippet %d not found", id)
+	}
+
+	return nil
 }
 
 func (s *Store) DeleteSnippet(id int) error {
 	_, err := s.db.Exec(`DELETE FROM snippets WHERE id = ?`, id)
 	return err
+}
+
+func (s *Store) getSnippetByID(id int) (Snippet, error) {
+	row := s.db.QueryRow(`
+		SELECT id, COALESCE(connection_id, ''), title, query_text, tags, COALESCE(folder_path, ''), created_at, COALESCE(updated_at, created_at)
+		FROM snippets
+		WHERE id = ?`, id)
+	return scanSnippet(row)
+}
+
+func scanSnippet(scanner interface{ Scan(dest ...any) error }) (Snippet, error) {
+	var snippet Snippet
+	var tagsStr string
+	if err := scanner.Scan(&snippet.ID, &snippet.ConnectionID, &snippet.Title, &snippet.QueryText, &tagsStr, &snippet.FolderPath, &snippet.CreatedAt, &snippet.UpdatedAt); err != nil {
+		return Snippet{}, err
+	}
+	if err := json.Unmarshal([]byte(tagsStr), &snippet.Tags); err != nil {
+		snippet.Tags = []string{}
+	}
+	return normalizeSnippet(snippet), nil
+}
+
+func snippetAccessClause(accessConnectionID string) string {
+	if strings.TrimSpace(accessConnectionID) == "" {
+		return `COALESCE(connection_id, '') = ''`
+	}
+	return `(COALESCE(connection_id, '') = '' OR COALESCE(connection_id, '') = ?)`
+}
+
+func snippetAccessArgs(accessConnectionID string) []any {
+	accessConnectionID = strings.TrimSpace(accessConnectionID)
+	if accessConnectionID == "" {
+		return nil
+	}
+	return []any{accessConnectionID}
+}
+
+func normalizeSnippetListFilter(filter SnippetListFilter) SnippetListFilter {
+	filter.ConnectionID = strings.TrimSpace(filter.ConnectionID)
+	filter.FolderPath = strings.TrimSpace(filter.FolderPath)
+	filter.Scope = strings.TrimSpace(strings.ToLower(filter.Scope))
+	if filter.Scope == "" {
+		filter.Scope = snippetScopeAll
+	}
+	if filter.Tags == nil {
+		filter.Tags = []string{}
+	}
+	for idx, tag := range filter.Tags {
+		filter.Tags[idx] = strings.TrimSpace(tag)
+	}
+	return filter
+}
+
+func snippetHasTags(snippet Snippet, tags []string) bool {
+	if len(tags) == 0 {
+		return true
+	}
+	available := make(map[string]struct{}, len(snippet.Tags))
+	for _, tag := range snippet.Tags {
+		normalized := strings.ToLower(strings.TrimSpace(tag))
+		if normalized != "" {
+			available[normalized] = struct{}{}
+		}
+	}
+	for _, tag := range tags {
+		normalized := strings.ToLower(strings.TrimSpace(tag))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := available[normalized]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeSnippet(snippet Snippet) Snippet {
+	snippet.ConnectionID = strings.TrimSpace(snippet.ConnectionID)
+	snippet.FolderPath = strings.TrimSpace(snippet.FolderPath)
+	if snippet.ConnectionID == "" {
+		snippet.Scope = snippetScopeGlobal
+	} else {
+		snippet.Scope = snippetScopeConnection
+	}
+	if snippet.UpdatedAt == "" {
+		snippet.UpdatedAt = snippet.CreatedAt
+	}
+	if snippet.Tags == nil {
+		snippet.Tags = []string{}
+	}
+	return snippet
 }
 
 // ─── Settings ───

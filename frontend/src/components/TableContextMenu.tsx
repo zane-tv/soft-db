@@ -1,23 +1,26 @@
 import { useEffect, useRef } from 'react'
+import type { TranslationKey } from '@/lib/i18n'
 
 interface TableContextMenuProps {
   x: number
   y: number
   tableName: string
+  t: (key: TranslationKey) => string
   onViewFullData: () => void
   onAttachToAI: () => void
   onOpenStructure: () => void
   onCopyName: () => void
+  onExportTable?: () => void
+  onDropTable?: () => void
   onClose: () => void
 }
 
 export function TableContextMenu({
-  x, y, tableName,
-  onViewFullData, onAttachToAI, onOpenStructure, onCopyName, onClose,
+  x, y, tableName, t,
+  onViewFullData, onAttachToAI, onOpenStructure, onCopyName, onExportTable, onDropTable, onClose,
 }: TableContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Close on click outside or Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
@@ -33,7 +36,6 @@ export function TableContextMenu({
     }
   }, [onClose])
 
-  // Adjust position to stay within viewport
   const style: React.CSSProperties = {
     position: 'fixed',
     left: Math.min(x, window.innerWidth - 220),
@@ -43,34 +45,49 @@ export function TableContextMenu({
 
   return (
     <div ref={menuRef} style={style} className="w-[210px] bg-bg-card border border-border-subtle/50 rounded-xl py-1.5 backdrop-blur-sm shadow-lg">
-      {/* Header: table name */}
       <div className="px-4 py-1.5 text-[10px] font-medium text-text-muted uppercase tracking-wider truncate" title={tableName}>
         {tableName}
       </div>
       <Separator />
 
-      <MenuItem icon="table_view" label="View Full Data" onClick={() => { onViewFullData(); onClose() }} />
-      <MenuItem icon="auto_awesome" label="Attach to AI Chat" onClick={() => { onAttachToAI(); onClose() }} />
+      <MenuItem icon="table_view" label={t('context.viewFullData')} onClick={() => { onViewFullData(); onClose() }} />
+      <MenuItem icon="auto_awesome" label={t('context.attachToAI')} onClick={() => { onAttachToAI(); onClose() }} />
       <Separator />
-      <MenuItem icon="settings" label="Open Structure" onClick={() => { onOpenStructure(); onClose() }} />
-      <MenuItem icon="content_copy" label="Copy Table Name" onClick={() => { onCopyName(); onClose() }} />
+      <MenuItem icon="settings" label={t('context.openStructure')} onClick={() => { onOpenStructure(); onClose() }} />
+      <MenuItem icon="content_copy" label={t('context.copyTableName')} onClick={() => { onCopyName(); onClose() }} />
+      {onExportTable && (
+        <>
+          <Separator />
+          <MenuItem icon="download" label={t('context.exportTable')} onClick={() => { onExportTable(); onClose() }} />
+        </>
+      )}
+      {onDropTable && (
+        <>
+          <Separator />
+          <MenuItem icon="delete" label={t('context.dropTable')} onClick={() => { onDropTable(); onClose() }} danger />
+        </>
+      )}
     </div>
   )
 }
 
-// ─── Sub-components ───
-
-function MenuItem({ icon, label, onClick }: {
+function MenuItem({ icon, label, onClick, danger }: {
   icon: string
   label: string
   onClick: () => void
+  danger?: boolean
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-2 text-[12px] text-left transition-colors text-text-main hover:bg-bg-hover/50"
+      className={`w-full flex items-center gap-3 px-4 py-2 text-[12px] text-left transition-colors ${
+        danger
+          ? 'text-red-400 hover:bg-red-500/10'
+          : 'text-text-main hover:bg-bg-hover/50'
+      }`}
     >
-      <span className="material-symbols-outlined text-[14px] text-text-muted">{icon}</span>
+      <span className={`material-symbols-outlined text-[14px] ${danger ? 'text-red-400' : 'text-text-muted'}`}>{icon}</span>
       {label}
     </button>
   )

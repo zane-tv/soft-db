@@ -242,6 +242,50 @@ func (d *MySQLDriver) Functions(ctx context.Context) ([]FunctionInfo, error) {
 func (d *MySQLDriver) Type() DatabaseType { return d.dbType }
 func (d *MySQLDriver) IsConnected() bool  { return d.db != nil }
 
+func (d *MySQLDriver) GetStructureChangeCapabilities(ctx context.Context) (*StructureChangeCapabilities, error) {
+	return &StructureChangeCapabilities{
+		DatabaseType: d.Type(),
+		GeneralNotes: []StructureCapabilityNote{{
+			Code:     "limited_ddl_transactions",
+			Message:  "MySQL and MariaDB can auto-commit DDL, so multi-statement apply may leave partial changes behind",
+			Severity: "warning",
+		}},
+		CreateTable: StructureOperationCapability{Supported: true},
+		AddColumn:   StructureOperationCapability{Supported: true},
+		RenameColumn: StructureOperationCapability{
+			Supported: true,
+			Notes: []StructureCapabilityNote{{
+				Code:     "rename_column_version",
+				Message:  "Rename-column syntax assumes a modern MySQL or MariaDB server",
+				Severity: "warning",
+			}},
+		},
+		AlterColumnType: StructureOperationCapability{
+			Supported:            true,
+			RequiresConfirmation: true,
+			Notes: []StructureCapabilityNote{{
+				Code:     "modify_column_rewrites_definition",
+				Message:  "Type and nullability changes rebuild the full MySQL column definition from current schema metadata",
+				Severity: "warning",
+			}},
+		},
+		AlterColumnDefault: StructureOperationCapability{Supported: true},
+		AlterColumnNullability: StructureOperationCapability{
+			Supported: true,
+			Notes: []StructureCapabilityNote{{
+				Code:     "modify_column_rewrites_definition",
+				Message:  "Nullability changes rebuild the full MySQL column definition from current schema metadata",
+				Severity: "warning",
+			}},
+		},
+		DropColumn: StructureOperationCapability{
+			Supported:            true,
+			Destructive:          true,
+			RequiresConfirmation: true,
+		},
+	}, nil
+}
+
 // ─── MultiDatabaseDriver implementation ───
 
 func (d *MySQLDriver) Databases(ctx context.Context) ([]DatabaseInfo, error) {
@@ -364,4 +408,51 @@ func (d *MySQLDriver) SwitchDatabase(ctx context.Context, database string) error
 	}
 	d.config.Database = database
 	return nil
+}
+
+// ─── ExportableDriver implementation ───
+
+// Compile-time interface check
+var _ ExportableDriver = (*MySQLDriver)(nil)
+
+func (d *MySQLDriver) GetTableRowCount(table string) (int64, error) {
+	if d.db == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+
+	var count int64
+	query := fmt.Sprintf("SELECT COUNT(*) FROM `%s`", table)
+	if err := d.db.QueryRow(query).Scan(&count); err != nil {
+		return 0, fmt.Errorf("row count %q: %w", table, err)
+	}
+	return count, nil
+}
+
+func (d *MySQLDriver) GetTableRows(table string, limit, offset int) (*QueryResult, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	start := time.Now()
+	query := fmt.Sprintf("SELECT * FROM `%s` LIMIT ? OFFSET ?", table)
+	rows, err := d.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("table rows %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	return scanRows(rows, start)
+}
+
+func (d *MySQLDriver) GetCreateTableDDL(table string) (string, error) {
+	if d.db == nil {
+		return "", fmt.Errorf("not connected")
+	}
+
+	var tableName, ddl string
+	query := fmt.Sprintf("SHOW CREATE TABLE `%s`", table)
+	if err := d.db.QueryRow(query).Scan(&tableName, &ddl); err != nil {
+		return "", fmt.Errorf("create table DDL %q: %w", table, err)
+	}
+	return ddl, nil
 }

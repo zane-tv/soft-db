@@ -21,6 +21,8 @@ import { RowContextMenu } from './RowContextMenu'
 import { AddRecordModal } from './AddRecordModal'
 import { ConfirmDialog } from './ConfirmDialog'
 import { VirtualRow } from './VirtualRow'
+import { ExportModal } from './ExportModal'
+import { DataExportFormat } from '@/lib/export-types'
 
 type Row = Record<string, unknown>
 
@@ -45,6 +47,9 @@ interface ResultsGridProps {
   pagination?: PaginationInfo
   onPageChange?: (page: number) => void
   onPageSizeChange?: (size: number) => void
+  tableName?: string
+  dbType?: string
+  databaseName?: string
 }
 
 // ─── Custom filter function that routes to typed filters ───
@@ -57,7 +62,7 @@ const typedFilterFn: FilterFn<Row> = (row, columnId, filterValue) => {
 }
 
 // ─── Component ───
-export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColumns = [], columnInfos = [], onDataChange, pagination, onPageChange, onPageSizeChange }: ResultsGridProps) {
+export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColumns = [], columnInfos = [], onDataChange, pagination, onPageChange, onPageSizeChange, tableName, dbType, databaseName }: ResultsGridProps) {
   const resultContainerRef = useRef<HTMLDivElement>(null)
   const { settings } = useSettingsContext()
   const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
@@ -99,6 +104,29 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
 
   // ─── Delete Confirm State ───
   const [deleteTarget, setDeleteTarget] = useState<{ rowIndex: number; row: Row } | null>(null)
+
+  // ─── Export Menu State ───
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [exportModalFormat, setExportModalFormat] = useState<DataExportFormat>(DataExportFormat.FormatCSV)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showExportMenu) return
+    const handler = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showExportMenu])
+
+  const handleOpenExportModal = useCallback((format: DataExportFormat) => {
+    setExportModalFormat(format)
+    setExportModalOpen(true)
+    setShowExportMenu(false)
+  }, [])
 
   // ─── Columns (no editGrid dependency — pure column definitions) ───
   const columns = useMemo<ColumnDef<Row, unknown>[]>(() => {
@@ -193,19 +221,20 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
     if (!queryResult?.columns?.length) return
     const cols = queryResult.columns
     const rows = table.getFilteredRowModel().rows
+    const delimiter = settings.csvDelimiter || ','
 
     const escapeCsv = (val: unknown): string => {
       if (val === null || val === undefined) return ''
       const str = String(val)
-      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      if (str.includes(delimiter) || str.includes('"') || str.includes('\n')) {
         return '"' + str.replace(/"/g, '""') + '"'
       }
       return str
     }
 
-    const header = cols.map((c) => escapeCsv(c.name)).join(',')
+    const header = cols.map((c) => escapeCsv(c.name)).join(delimiter)
     const dataRows = rows.map((row) =>
-      cols.map((c) => escapeCsv(row.original[c.name])).join(',')
+      cols.map((c) => escapeCsv(row.original[c.name])).join(delimiter)
     )
     const csv = [header, ...dataRows].join('\n')
 
@@ -216,7 +245,7 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
     a.download = `export_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }, [queryResult, table])
+  }, [queryResult, table, settings.csvDelimiter])
 
   const activeFilterCount = columnFilters.length + (globalFilter ? 1 : 0)
 
@@ -309,15 +338,65 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
               </button>
             )}
 
-            {/* Export */}
-            <button
-              onClick={handleExport}
-              aria-label="Export results"
-              className="flex items-center gap-1.5 px-2 py-1 hover:bg-bg-hover/50 rounded text-text-muted hover:text-text-main transition-colors"
-            >
-              <span className="material-symbols-outlined text-[16px]">download</span>
-              Export
-            </button>
+            {/* Export Dropdown */}
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                aria-label="Export options"
+                className={`flex items-center gap-1 px-2 py-1 rounded text-text-muted transition-colors ${showExportMenu ? 'bg-bg-hover/50 text-text-main' : 'hover:bg-bg-hover/50 hover:text-text-main'}`}
+              >
+                <span className="material-symbols-outlined text-[16px]">download</span>
+                <span className="text-[11px]">Export</span>
+                <span className="material-symbols-outlined text-[12px]">expand_more</span>
+              </button>
+
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 w-56 bg-bg-card border border-border-subtle rounded-lg shadow-xl z-50 py-1">
+                  <button
+                    type="button"
+                    onClick={() => { handleExport(); setShowExportMenu(false) }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-text-muted hover:text-text-main hover:bg-bg-hover/50 transition-colors text-left"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">table_view</span>
+                    Quick Export (visible rows)
+                  </button>
+
+                  {tableName && (
+                    <>
+                      <div className="h-px bg-border-subtle/30 my-1" />
+                      <div className="px-3 py-1 text-[10px] text-text-muted/50 uppercase tracking-wider font-medium">
+                        Full Table
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenExportModal(DataExportFormat.FormatCSV)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-text-muted hover:text-text-main hover:bg-bg-hover/50 transition-colors text-left"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">csv</span>
+                        Export as CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenExportModal(DataExportFormat.FormatJSON)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-text-muted hover:text-text-main hover:bg-bg-hover/50 transition-colors text-left"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">data_object</span>
+                        Export as JSON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenExportModal(DataExportFormat.FormatSQLInsert)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-[11px] text-text-muted hover:text-text-main hover:bg-bg-hover/50 transition-colors text-left"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">database</span>
+                        Export as SQL INSERT
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -552,6 +631,20 @@ export function ResultsGrid({ queryResult, query = '', connectionId = '', pkColu
         danger
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Export Table Modal */}
+      <ExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        mode="database"
+        connectionId={connectionId}
+        databaseName={databaseName}
+        tables={tableName ? [tableName] : []}
+        dbType={dbType}
+        defaultDataFormat={exportModalFormat}
+        defaultIncludeSchema={false}
+        defaultIncludeData={true}
       />
     </div>
   )

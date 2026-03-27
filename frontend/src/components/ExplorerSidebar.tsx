@@ -1,8 +1,11 @@
-import { useState } from 'react'
-import { useColumns, useHasMultiDB, useDatabases, useTablesForDB } from '@/hooks/useSchema'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useColumns, useHasMultiDB, useDatabases, useTablesForDB, useDropTable } from '@/hooks/useSchema'
 import { useSettings } from '@/hooks/useSettings'
-import { useTranslation } from '@/lib/i18n'
+import { useTranslation, type TranslationKey } from '@/lib/i18n'
 import { TableContextMenu } from './TableContextMenu'
+import { ConfirmDialog } from './ConfirmDialog'
+import { ExportModal } from './ExportModal'
+import { ImportModal } from './ImportModal'
 
 // ─── Types ───
 interface ExplorerSidebarProps {
@@ -48,13 +51,56 @@ export function ExplorerSidebar({
 }: ExplorerSidebarProps) {
   const { data: settings } = useSettings()
   const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tableName: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tableName: string; databaseName?: string } | null>(null)
+  const [dbContextMenu, setDbContextMenu] = useState<{ x: number; y: number; databaseName: string } | null>(null)
 
-  const handleTableContextMenu = (e: React.MouseEvent, tableName: string) => {
+  const [exportOpen, setExportOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [modalDbName, setModalDbName] = useState<string | undefined>()
+  const [exportTables, setExportTables] = useState<string[]>([])
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const dropTable = useDropTable()
+
+  const handleDropTableConfirm = useCallback(async () => {
+    if (!dropTarget) return
+    try {
+      await dropTable.mutateAsync({ connectionId, table: dropTarget })
+    } finally {
+      setDropTarget(null)
+    }
+  }, [dropTarget, connectionId, dropTable])
+
+  const handleTableContextMenu = (e: React.MouseEvent, tableName: string, databaseName?: string) => {
     e.preventDefault()
     e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY, tableName })
+    setDbContextMenu(null)
+    setContextMenu({ x: e.clientX, y: e.clientY, tableName, databaseName: databaseName || selectedDatabase || undefined })
   }
+
+  const handleDbContextMenu = (e: React.MouseEvent, databaseName: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu(null)
+    setDbContextMenu({ x: e.clientX, y: e.clientY, databaseName })
+  }
+
+  const handleExportTable = (tableName: string, databaseName?: string) => {
+    setModalDbName(databaseName || selectedDatabase || undefined)
+    setExportTables([tableName])
+    setExportOpen(true)
+  }
+
+  const handleExportDatabase = (databaseName: string) => {
+    setModalDbName(databaseName)
+    setExportTables([])
+    setExportOpen(true)
+  }
+
+  const handleImportDatabase = (databaseName: string) => {
+    setModalDbName(databaseName)
+    setImportOpen(true)
+  }
+
   const { data: hasMultiDB } = useHasMultiDB(connectionId)
 
   return (
@@ -84,6 +130,7 @@ export function ExplorerSidebar({
             onStructureOpen={onStructureOpen}
             onDatabaseSelect={onDatabaseSelect}
             onTableContextMenu={handleTableContextMenu}
+            onDbContextMenu={handleDbContextMenu}
           />
         ) : (
           <>
@@ -127,19 +174,62 @@ export function ExplorerSidebar({
         </button>
       </div>
 
-      {/* Table Context Menu */}
       {contextMenu && (
         <TableContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           tableName={contextMenu.tableName}
+          t={t}
           onViewFullData={() => onViewFullData?.(contextMenu.tableName)}
           onAttachToAI={() => onAttachToAI?.(contextMenu.tableName)}
           onOpenStructure={() => onStructureOpen(contextMenu.tableName)}
           onCopyName={() => navigator.clipboard.writeText(contextMenu.tableName)}
+          onExportTable={() => handleExportTable(contextMenu.tableName, contextMenu.databaseName)}
+          onDropTable={() => setDropTarget(contextMenu.tableName)}
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={!!dropTarget}
+        title={t('dropTable.title')}
+        message={t('dropTable.message').replace('{table}', dropTarget || '')}
+        confirmLabel={t('dropTable.confirm')}
+        danger
+        icon="delete_forever"
+        onConfirm={handleDropTableConfirm}
+        onCancel={() => setDropTarget(null)}
+      />
+
+      {dbContextMenu && (
+        <DatabaseContextMenu
+          x={dbContextMenu.x}
+          y={dbContextMenu.y}
+          databaseName={dbContextMenu.databaseName}
+          t={t}
+          onExportDatabase={() => { handleExportDatabase(dbContextMenu.databaseName); setDbContextMenu(null) }}
+          onImportDatabase={() => { handleImportDatabase(dbContextMenu.databaseName); setDbContextMenu(null) }}
+          onClose={() => setDbContextMenu(null)}
+        />
+      )}
+
+      <ExportModal
+        open={exportOpen}
+        onClose={() => { setExportOpen(false); setExportTables([]) }}
+        mode="database"
+        connectionId={connectionId}
+        databaseName={modalDbName}
+        tables={exportTables}
+        dbType={connType}
+      />
+
+      <ImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        mode="database"
+        connectionId={connectionId}
+        databaseName={modalDbName}
+      />
     </aside>
   )
 }
@@ -153,6 +243,7 @@ function MultiDBTree({
   onStructureOpen,
   onDatabaseSelect,
   onTableContextMenu,
+  onDbContextMenu,
 }: {
   connectionId: string
   selectedTable: string | null
@@ -160,7 +251,8 @@ function MultiDBTree({
   onTableClick: (name: string) => void
   onStructureOpen: (name: string) => void
   onDatabaseSelect?: (database: string) => void
-  onTableContextMenu?: (e: React.MouseEvent, tableName: string) => void
+  onTableContextMenu?: (e: React.MouseEvent, tableName: string, databaseName?: string) => void
+  onDbContextMenu?: (e: React.MouseEvent, databaseName: string) => void
 }) {
   const { data: databases = [], isLoading } = useDatabases(connectionId)
 
@@ -186,6 +278,7 @@ function MultiDBTree({
           onTableClick={onTableClick}
           onStructureOpen={onStructureOpen}
           onTableContextMenu={onTableContextMenu}
+          onDbContextMenu={onDbContextMenu}
         />
       ))}
     </TreeSection>
@@ -202,6 +295,7 @@ function DatabaseTreeItem({
   onTableClick,
   onStructureOpen,
   onTableContextMenu,
+  onDbContextMenu,
 }: {
   name: string
   connectionId: string
@@ -210,7 +304,8 @@ function DatabaseTreeItem({
   onSelect?: () => void
   onTableClick: (name: string) => void
   onStructureOpen: (name: string) => void
-  onTableContextMenu?: (e: React.MouseEvent, tableName: string) => void
+  onTableContextMenu?: (e: React.MouseEvent, tableName: string, databaseName?: string) => void
+  onDbContextMenu?: (e: React.MouseEvent, databaseName: string) => void
 }) {
   const { data: settings } = useSettings()
   const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
@@ -220,13 +315,13 @@ function DatabaseTreeItem({
   return (
     <li>
       <div
+        onContextMenu={onDbContextMenu ? (e) => onDbContextMenu(e, name) : undefined}
         className={`w-full flex items-center gap-0.5 px-1 py-1.5 text-[12px] rounded-md border-l-2 transition-all duration-150 group ${
           active
             ? 'text-text-main bg-bg-hover border-primary'
             : 'text-text-muted hover:text-text-main hover:bg-bg-hover/30 border-transparent'
         }`}
       >
-        {/* Expand arrow */}
         <button
           onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
           className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-bg-hover/50 transition-colors"
@@ -236,7 +331,6 @@ function DatabaseTreeItem({
           </span>
         </button>
 
-        {/* Database name (clickable — selects this DB as active) */}
         <button
           onClick={() => { onSelect?.(); setExpanded(true) }}
           className="flex items-center gap-2 flex-1 min-w-0 text-left"
@@ -265,7 +359,7 @@ function DatabaseTreeItem({
                 active={selectedTable === t.name}
                 onClick={() => onTableClick(t.name)}
                 onSettings={() => onStructureOpen(t.name)}
-                onContextMenu={onTableContextMenu ? (e) => onTableContextMenu(e, t.name) : undefined}
+                onContextMenu={onTableContextMenu ? (e) => onTableContextMenu(e, t.name, name) : undefined}
               />
             ))
           ) : (
@@ -444,6 +538,74 @@ function TreeItem({
         <span className="truncate flex-1 text-left">{label}</span>
       </button>
     </li>
+  )
+}
+
+// ─── DatabaseContextMenu ───
+function DatabaseContextMenu({
+  x,
+  y,
+  databaseName,
+  t: translate,
+  onExportDatabase,
+  onImportDatabase,
+  onClose,
+}: {
+  x: number
+  y: number
+  databaseName: string
+  t: (key: TranslationKey) => string
+  onExportDatabase: () => void
+  onImportDatabase: () => void
+  onClose: () => void
+}) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    left: Math.min(x, window.innerWidth - 220),
+    top: Math.min(y, window.innerHeight - 150),
+    zIndex: 100,
+  }
+
+  return (
+    <div ref={menuRef} style={style} className="w-[210px] bg-bg-card border border-border-subtle/50 rounded-xl py-1.5 backdrop-blur-sm shadow-lg">
+      <div className="px-4 py-1.5 text-[10px] font-medium text-text-muted uppercase tracking-wider truncate" title={databaseName}>
+        {databaseName}
+      </div>
+      <div className="my-1.5 border-t border-border-subtle/30" />
+      <button
+        type="button"
+        onClick={onExportDatabase}
+        className="w-full flex items-center gap-3 px-4 py-2 text-[12px] text-left transition-colors text-text-main hover:bg-bg-hover/50"
+      >
+        <span className="material-symbols-outlined text-[14px] text-text-muted">download</span>
+        {translate('context.exportDatabase')}
+      </button>
+      <button
+        type="button"
+        onClick={onImportDatabase}
+        className="w-full flex items-center gap-3 px-4 py-2 text-[12px] text-left transition-colors text-text-main hover:bg-bg-hover/50"
+      >
+        <span className="material-symbols-outlined text-[14px] text-text-muted">upload</span>
+        {translate('context.importDatabase')}
+      </button>
+    </div>
   )
 }
 

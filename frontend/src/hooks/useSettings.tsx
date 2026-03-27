@@ -25,6 +25,8 @@ const DEFAULT_SETTINGS = new AppSettings({
   defaultLimit: 100,
   confirmMutations: false,
   autoLimit: false,
+  warnQueryRisks: true,
+  warnLimitedQueryAnalysis: true,
   connectionTimeout: 15,
   nullDisplay: 'badge',
   dateFormat: 'iso',

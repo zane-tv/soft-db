@@ -134,6 +134,35 @@ type SchemaValidationDriver interface {
 	SetCollectionValidator(ctx context.Context, database, collection string, schema map[string]interface{}) error
 }
 
+type StructureCapabilityNote struct {
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Severity string `json:"severity"`
+}
+
+type StructureOperationCapability struct {
+	Supported            bool                      `json:"supported"`
+	Destructive          bool                      `json:"destructive"`
+	RequiresConfirmation bool                      `json:"requiresConfirmation"`
+	Notes                []StructureCapabilityNote `json:"notes,omitempty"`
+}
+
+type StructureChangeCapabilities struct {
+	DatabaseType           DatabaseType                 `json:"databaseType"`
+	GeneralNotes           []StructureCapabilityNote    `json:"generalNotes,omitempty"`
+	CreateTable            StructureOperationCapability `json:"createTable"`
+	AddColumn              StructureOperationCapability `json:"addColumn"`
+	RenameColumn           StructureOperationCapability `json:"renameColumn"`
+	AlterColumnType        StructureOperationCapability `json:"alterColumnType"`
+	AlterColumnDefault     StructureOperationCapability `json:"alterColumnDefault"`
+	AlterColumnNullability StructureOperationCapability `json:"alterColumnNullability"`
+	DropColumn             StructureOperationCapability `json:"dropColumn"`
+}
+
+type StructureChangeCapabilityDriver interface {
+	GetStructureChangeCapabilities(ctx context.Context) (*StructureChangeCapabilities, error)
+}
+
 // NewDriver creates a new driver instance for the given database type
 func NewDriver(dbType DatabaseType) (Driver, error) {
 	switch dbType {
@@ -155,4 +184,14 @@ func NewDriver(dbType DatabaseType) (Driver, error) {
 // measureTime returns elapsed milliseconds since start
 func measureTime(start time.Time) float64 {
 	return float64(time.Since(start).Microseconds()) / 1000.0
+}
+
+// ExportableDriver provides chunked data export capability
+type ExportableDriver interface {
+	// GetTableRowCount returns total row count for a table (for progress tracking)
+	GetTableRowCount(table string) (int64, error)
+	// GetTableRows returns rows for a table with LIMIT/OFFSET pagination
+	GetTableRows(table string, limit, offset int) (*QueryResult, error)
+	// GetCreateTableDDL returns CREATE TABLE DDL for SQL engines (empty string for MongoDB)
+	GetCreateTableDDL(table string) (string, error)
 }

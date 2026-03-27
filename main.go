@@ -37,6 +37,8 @@ func main() {
 	oauthService := services.NewOAuthService(appStore)
 	aiService := services.NewAIService(oauthService, schemaService, connService, appStore)
 	updateService := services.NewUpdateService(Version)
+	exportService := services.NewExportService(appStore, connService, settingsService)
+	importService := services.NewImportService(appStore, connService, settingsService)
 
 	// Create Wails app
 	app := application.New(application.Options{
@@ -51,6 +53,8 @@ func main() {
 			application.NewService(oauthService),
 			application.NewService(aiService),
 			application.NewService(updateService),
+			application.NewService(exportService),
+			application.NewService(importService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -67,6 +71,8 @@ func main() {
 	oauthService.SetApp(app)
 	aiService.SetApp(app)
 	updateService.SetApp(app)
+	exportService.SetApp(app)
+	importService.SetApp(app)
 
 	// Create main window
 	app.Window.NewWithOptions(application.WebviewWindowOptions{

@@ -25,10 +25,12 @@ type AppSettings struct {
 	AutoUppercase bool `json:"autoUppercase"`
 
 	// Query Execution
-	QueryTimeout     int  `json:"queryTimeout"`
-	DefaultLimit     int  `json:"defaultLimit"`
-	ConfirmMutations bool `json:"confirmMutations"`
-	AutoLimit        bool `json:"autoLimit"`
+	QueryTimeout             int  `json:"queryTimeout"`
+	DefaultLimit             int  `json:"defaultLimit"`
+	ConfirmMutations         bool `json:"confirmMutations"`
+	AutoLimit                bool `json:"autoLimit"`
+	WarnQueryRisks           bool `json:"warnQueryRisks"`
+	WarnLimitedQueryAnalysis bool `json:"warnLimitedQueryAnalysis"`
 
 	// Connection
 	ConnectionTimeout int `json:"connectionTimeout"`
@@ -61,10 +63,12 @@ func DefaultSettings() AppSettings {
 		AutoUppercase: false,
 
 		// Query Execution
-		QueryTimeout:     30,
-		DefaultLimit:     100,
-		ConfirmMutations: false,
-		AutoLimit:        false,
+		QueryTimeout:             30,
+		DefaultLimit:             100,
+		ConfirmMutations:         false,
+		AutoLimit:                false,
+		WarnQueryRisks:           true,
+		WarnLimitedQueryAnalysis: true,
 
 		// Connection
 		ConnectionTimeout: 15,

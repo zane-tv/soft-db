@@ -590,3 +590,127 @@ func (d *MongoDriver) SetCollectionValidator(ctx context.Context, database, coll
 	}
 	return nil
 }
+
+// ─── ExportableDriver implementation ───
+
+// GetTableRowCount returns total document count for a collection.
+func (d *MongoDriver) GetTableRowCount(collection string) (int64, error) {
+	if d.client == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+
+	ctx := context.Background()
+	count, err := d.client.Database(d.dbName).Collection(collection).CountDocuments(ctx, bson.D{})
+	if err != nil {
+		return 0, fmt.Errorf("count documents: %w", err)
+	}
+	return count, nil
+}
+
+// GetTableRows returns documents for a collection with limit/offset pagination.
+func (d *MongoDriver) GetTableRows(collection string, limit, offset int) (*QueryResult, error) {
+	if d.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	ctx := context.Background()
+	coll := d.client.Database(d.dbName).Collection(collection)
+
+	opts := options.Find().SetLimit(int64(limit)).SetSkip(int64(offset))
+	cursor, err := coll.Find(ctx, bson.D{}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("find: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var rows []map[string]interface{}
+	var columns []ColumnMeta
+	colSeen := make(map[string]bool)
+
+	for cursor.Next(ctx) {
+		raw := cursor.Current
+
+		// Extended JSON preserves BSON types (ObjectId, Date, Decimal128)
+		extJSON, err := bson.MarshalExtJSON(raw, true, false)
+		if err != nil {
+			continue
+		}
+
+		var row map[string]interface{}
+		if err := bson.UnmarshalExtJSON(extJSON, true, &row); err != nil {
+			continue
+		}
+
+		for k := range row {
+			if !colSeen[k] {
+				colSeen[k] = true
+				columns = append(columns, ColumnMeta{Name: k, Type: "mixed"})
+			}
+		}
+
+		rows = append(rows, row)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor: %w", err)
+	}
+
+	if rows == nil {
+		rows = []map[string]interface{}{}
+	}
+
+	return &QueryResult{
+		Columns:  columns,
+		Rows:     rows,
+		RowCount: int64(len(rows)),
+	}, nil
+}
+
+// GetCreateTableDDL returns empty string — MongoDB has no DDL.
+func (d *MongoDriver) GetCreateTableDDL(collection string) (string, error) {
+	return "", nil
+}
+
+// MongoDatabase returns a handle to the named database.
+// Used by the export/import service for operations requiring direct MongoDB client access.
+func (d *MongoDriver) MongoDatabase(name string) *mongo.Database {
+	if d.client == nil {
+		return nil
+	}
+	return d.client.Database(name)
+}
+
+// ─── MongoDB-specific export methods ───
+
+// GetCollectionIndexes returns all indexes for a collection.
+func (d *MongoDriver) GetCollectionIndexes(collection string) ([]bson.M, error) {
+	if d.client == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	ctx := context.Background()
+	cursor, err := d.client.Database(d.dbName).Collection(collection).Indexes().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list indexes: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var indexes []bson.M
+	for cursor.Next(ctx) {
+		var idx bson.M
+		if err := cursor.Decode(&idx); err != nil {
+			continue
+		}
+		indexes = append(indexes, idx)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor: %w", err)
+	}
+
+	if indexes == nil {
+		indexes = []bson.M{}
+	}
+
+	return indexes, nil
+}

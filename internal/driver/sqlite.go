@@ -201,3 +201,88 @@ func (d *SQLiteDriver) Functions(ctx context.Context) ([]FunctionInfo, error) {
 
 func (d *SQLiteDriver) Type() DatabaseType { return SQLite }
 func (d *SQLiteDriver) IsConnected() bool  { return d.db != nil }
+
+// ─── ExportableDriver implementation ───
+
+var _ ExportableDriver = (*SQLiteDriver)(nil)
+
+func (d *SQLiteDriver) GetTableRowCount(table string) (int64, error) {
+	if d.db == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+
+	var count int64
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM "%s"`, table)
+	if err := d.db.QueryRow(query).Scan(&count); err != nil {
+		return 0, fmt.Errorf("row count %q: %w", table, err)
+	}
+	return count, nil
+}
+
+func (d *SQLiteDriver) GetTableRows(table string, limit, offset int) (*QueryResult, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	start := time.Now()
+	query := fmt.Sprintf(`SELECT * FROM "%s" LIMIT ? OFFSET ?`, table)
+	rows, err := d.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("table rows %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	return scanRows(rows, start)
+}
+
+func (d *SQLiteDriver) GetCreateTableDDL(table string) (string, error) {
+	if d.db == nil {
+		return "", fmt.Errorf("not connected")
+	}
+
+	var ddl sql.NullString
+	err := d.db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, table,
+	).Scan(&ddl)
+	if err != nil {
+		return "", fmt.Errorf("create table DDL %q: %w", table, err)
+	}
+	if !ddl.Valid || ddl.String == "" {
+		return "", fmt.Errorf("table %q not found", table)
+	}
+	return ddl.String + ";", nil
+}
+
+func (d *SQLiteDriver) GetStructureChangeCapabilities(ctx context.Context) (*StructureChangeCapabilities, error) {
+	return &StructureChangeCapabilities{
+		DatabaseType: SQLite,
+		GeneralNotes: []StructureCapabilityNote{{
+			Code:     "sqlite_limited_alter",
+			Message:  "SQLite ALTER TABLE support is intentionally limited in v1; unsupported changes are blocked instead of rewritten",
+			Severity: "warning",
+		}},
+		CreateTable: StructureOperationCapability{Supported: true},
+		AddColumn: StructureOperationCapability{
+			Supported: true,
+			Notes: []StructureCapabilityNote{{
+				Code:     "sqlite_add_column_limits",
+				Message:  "SQLite add-column support is limited; primary keys, unique constraints, and NOT NULL without defaults are blocked",
+				Severity: "warning",
+			}},
+		},
+		RenameColumn:           StructureOperationCapability{Supported: true},
+		AlterColumnType:        StructureOperationCapability{Supported: false},
+		AlterColumnDefault:     StructureOperationCapability{Supported: false},
+		AlterColumnNullability: StructureOperationCapability{Supported: false},
+		DropColumn: StructureOperationCapability{
+			Supported:            true,
+			Destructive:          true,
+			RequiresConfirmation: true,
+			Notes: []StructureCapabilityNote{{
+				Code:     "sqlite_drop_column_version",
+				Message:  "SQLite drop-column support depends on modern engine versions and should be reviewed before apply",
+				Severity: "warning",
+			}},
+		},
+	}, nil
+}

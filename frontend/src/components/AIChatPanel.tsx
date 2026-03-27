@@ -7,6 +7,7 @@ interface AIChatPanelProps {
   onClose: () => void
   onInsertToEditor?: (code: string) => void
   prefillText?: string
+  prefillMode?: 'append' | 'replace'
   onPrefillConsumed?: () => void
 }
 
@@ -15,7 +16,7 @@ const MAX_WIDTH = 600
 const DEFAULT_WIDTH = 340
 const STORAGE_KEY = 'ai-panel-width'
 
-export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, prefillText, onPrefillConsumed }: AIChatPanelProps) {
+export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, prefillText, prefillMode = 'append', onPrefillConsumed }: AIChatPanelProps) {
   const { isLoggedIn, login, logout, isExpired, email } = useAuth()
   const { models, selectedModel, setModel } = useModelSelection(connectionId)
   const {
@@ -41,11 +42,11 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
   // Handle prefill text (from Attach to AI)
   useEffect(() => {
     if (prefillText && visible) {
-      setInput(prev => prev ? prev + prefillText : prefillText)
+      setInput(prev => prefillMode === 'replace' ? prefillText : (prev ? prev + prefillText : prefillText))
       onPrefillConsumed?.()
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [prefillText, visible, onPrefillConsumed])
+  }, [prefillText, visible, prefillMode, onPrefillConsumed])
 
   // Focus input when panel opens
   useEffect(() => {

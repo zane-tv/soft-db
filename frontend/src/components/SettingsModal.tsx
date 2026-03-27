@@ -23,7 +23,7 @@ function getSections(t: (key: TranslationKey) => string): { id: SectionId; label
 }
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const overlayRef = useRef<HTMLDivElement>(null)
+  const overlayRef = useRef<HTMLButtonElement>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('general')
   const { settings, updateSetting } = useSettingsContext()
   const { theme, setTheme, themes } = useTheme()
@@ -35,7 +35,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div
+      <button
+        type="button"
+        aria-label="Close settings"
         ref={overlayRef}
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
         style={{ animationDuration: '0.2s' }}
@@ -57,6 +59,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             {sections.map((s) => (
               <button
                 key={s.id}
+                type="button"
                 onClick={() => setActiveSection(s.id)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   activeSection === s.id
@@ -81,6 +84,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               {sections.find((s) => s.id === activeSection)?.label}
             </h3>
             <button
+              type="button"
               onClick={onClose}
               className="text-text-muted hover:text-text-main p-1.5 rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
@@ -123,6 +127,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* Footer */}
           <div className="px-6 py-3.5 border-t border-border-subtle/50 flex items-center justify-end shrink-0">
             <button
+              type="button"
               onClick={onClose}
               className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-semibold transition-all duration-200 active:scale-[0.97]"
             >
@@ -282,6 +287,7 @@ function GeneralSection({ settings, updateSetting, t }: SectionProps) {
           ].map((lang) => (
             <button
               key={lang.id}
+              type="button"
               onClick={() => updateSetting('language', lang.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 border ${
                 settings.language === lang.id
@@ -389,8 +395,24 @@ function ExecutionSection({ settings, updateSetting, t }: SectionProps) {
       <SettingRow icon="edit_off" label={t('settings.confirmMutations')} description={t('settings.confirmMutations.desc')}>
         <Toggle checked={settings.confirmMutations} onChange={(v) => updateSetting('confirmMutations', v)} />
       </SettingRow>
+      <SettingRow icon="priority_high" label={t('settings.warnQueryRisks')} description={t('settings.warnQueryRisks.desc')}>
+        <Toggle checked={settings.warnQueryRisks} onChange={(v) => updateSetting('warnQueryRisks', v)} />
+      </SettingRow>
+      <SettingRow icon="rule" label={t('settings.warnLimitedQueryAnalysis')} description={t('settings.warnLimitedQueryAnalysis.desc')}>
+        <Toggle checked={settings.warnLimitedQueryAnalysis} onChange={(v) => updateSetting('warnLimitedQueryAnalysis', v)} />
+      </SettingRow>
       <SettingRow icon="playlist_add" label={t('settings.autoLimit')} description={t('settings.autoLimit.desc')}>
         <Toggle checked={settings.autoLimit} onChange={(v) => updateSetting('autoLimit', v)} />
+      </SettingRow>
+      <SettingRow icon="search_insights" label={t('settings.explainAvailability')} description={t('settings.explainAvailability.desc')}>
+        <span className="text-[11px] font-semibold text-amber-300 px-2 py-1 rounded-md border border-amber-500/30 bg-amber-500/10">
+          SQL only
+        </span>
+      </SettingRow>
+      <SettingRow icon="build" label={t('settings.structureLimitations')} description={t('settings.structureLimitations.desc')}>
+        <span className="text-[11px] font-semibold text-text-muted px-2 py-1 rounded-md border border-border-subtle/60 bg-bg-app">
+          v1 limits
+        </span>
       </SettingRow>
     </>
   )
@@ -453,12 +475,10 @@ function DataSection({ settings, updateSetting, t }: SectionProps) {
 // ─── About Section ───
 
 const SHORTCUTS = [
-  { keys: 'Ctrl + E', action: 'about.shortcut.execute' as const },
-  { keys: 'Ctrl + T', action: 'about.shortcut.newTab' as const },
-  { keys: 'Ctrl + W', action: 'about.shortcut.closeTab' as const },
-  { keys: 'Ctrl + S', action: 'about.shortcut.save' as const },
-  { keys: 'Ctrl + ,', action: 'about.shortcut.settings' as const },
-  { keys: 'F11', action: 'about.shortcut.fullscreen' as const },
+  { keys: 'Ctrl/Cmd + E', action: 'about.shortcut.execute' as const },
+  { keys: 'Ctrl/Cmd + Shift + E', action: 'about.shortcut.explain' as const },
+  { keys: 'Ctrl/Cmd + Shift + O', action: 'about.shortcut.optimize' as const },
+  { keys: 'Ctrl/Cmd + S', action: 'about.shortcut.save' as const },
 ]
 
 const DATABASES = [
@@ -519,6 +539,16 @@ function AboutSection({ t }: { t: (key: TranslationKey) => string }) {
         </div>
       </div>
 
+      <div>
+        <h4 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">{t('about.notes')}</h4>
+        <div className="bg-bg-app rounded-xl border border-border-subtle/50 p-4 space-y-2">
+          <p className="text-xs text-text-muted">• {t('about.note.explainMongo')}</p>
+          <p className="text-xs text-text-muted">• {t('about.note.structureLimits')}</p>
+          <p className="text-xs text-text-muted">• {t('about.note.structureUnsupported')}</p>
+          <p className="text-xs text-text-muted">• {t('about.note.snippetSave')}</p>
+        </div>
+      </div>
+
       {/* Credits */}
       <div className="text-center pt-2 space-y-1">
         <p className="text-xs text-text-muted/60">{t('about.license')}</p>
@@ -549,6 +579,7 @@ function ThemeCard({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`group relative flex flex-col items-start gap-3 p-4 rounded-xl border text-left transition-all duration-200 ${
         isActive
@@ -593,9 +624,9 @@ function ThemeCard({
 
       {/* Color dots */}
       <div className="flex gap-1.5">
-        {Object.values(theme.colors).map((color, i) => (
+        {Object.entries(theme.colors).map(([name, color]) => (
           <div
-            key={i}
+            key={name}
             className="size-3 rounded-full border border-white/10"
             style={{ backgroundColor: color }}
           />

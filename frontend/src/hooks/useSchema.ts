@@ -1,6 +1,136 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as SchemaService from '../../bindings/soft-db/services/schemaservice'
 import * as QueryService from '../../bindings/soft-db/services/queryservice'
+import { Call as WailsCall } from '@wailsio/runtime'
+import type { Snippet, SnippetListFilter } from '../../bindings/soft-db/internal/store/models'
+
+const PREVIEW_STRUCTURE_CHANGE_METHOD_ID = 1797572774
+const APPLY_STRUCTURE_CHANGE_METHOD_ID = 474600782
+
+export type StructureChangeMode = 'createTable' | 'alterTable'
+
+export interface StructureColumnDefinition {
+  name: string
+  type: string
+  primaryKey: boolean
+  notNull: boolean
+  unique: boolean
+  defaultValue?: string
+}
+
+export interface AddColumnOperation {
+  column: StructureColumnDefinition
+}
+
+export interface RenameColumnOperation {
+  column: string
+  newName: string
+}
+
+export interface AlterColumnTypeOperation {
+  column: string
+  newType: string
+}
+
+export interface AlterColumnDefaultOperation {
+  column: string
+  hasDefault: boolean
+  defaultValue?: string
+}
+
+export interface AlterColumnNullabilityOperation {
+  column: string
+  notNull: boolean
+}
+
+export interface DropColumnOperation {
+  column: string
+}
+
+export interface StructureChangeOperation {
+  kind:
+    | 'addColumn'
+    | 'renameColumn'
+    | 'alterColumnType'
+    | 'alterColumnDefault'
+    | 'alterColumnNullability'
+    | 'dropColumn'
+  addColumn?: AddColumnOperation
+  renameColumn?: RenameColumnOperation
+  alterColumnType?: AlterColumnTypeOperation
+  alterColumnDefault?: AlterColumnDefaultOperation
+  alterColumnNullability?: AlterColumnNullabilityOperation
+  dropColumn?: DropColumnOperation
+}
+
+export interface CreateTableRequest {
+  table: string
+  columns: StructureColumnDefinition[]
+}
+
+export interface AlterTableRequest {
+  table: string
+  operations: StructureChangeOperation[]
+}
+
+export interface StructureChangeRequest {
+  database?: string
+  mode: StructureChangeMode
+  confirmApply?: boolean
+  createTable?: CreateTableRequest
+  alterTable?: AlterTableRequest
+}
+
+export interface StructureChangeWarning {
+  code: string
+  message: string
+  severity: string
+  operationKind?: string
+  column?: string
+  destructive: boolean
+  blocking: boolean
+  capabilityRelated: boolean
+}
+
+export interface StructureCapabilityNote {
+  code: string
+  message: string
+  severity: string
+}
+
+export interface StructureChangePreviewResult {
+  databaseType: string
+  statements: string[]
+  warnings: StructureChangeWarning[]
+  capabilityNotes: StructureCapabilityNote[]
+  supported: boolean
+  hasDestructiveChanges: boolean
+  requiresConfirmation: boolean
+  error?: string
+}
+
+export interface StructureChangeApplyResult {
+  databaseType: string
+  plannedStatements: string[]
+  executedStatements: string[]
+  warnings: StructureChangeWarning[]
+  capabilityNotes: StructureCapabilityNote[]
+  supported: boolean
+  success: boolean
+  blocked: boolean
+  hasDestructiveChanges: boolean
+  requiresConfirmation: boolean
+  failedStatement?: string
+  error?: string
+}
+
+function previewStructureChange(connectionId: string, request: StructureChangeRequest) {
+  return WailsCall.ByID(PREVIEW_STRUCTURE_CHANGE_METHOD_ID, connectionId, request) as Promise<StructureChangePreviewResult>
+}
+
+function applyStructureChange(connectionId: string, request: StructureChangeRequest) {
+  return WailsCall.ByID(APPLY_STRUCTURE_CHANGE_METHOD_ID, connectionId, request) as Promise<StructureChangeApplyResult>
+}
 
 // ─── Schema Keys ───
 export const schemaKeys = {
@@ -87,6 +217,18 @@ export function useSwitchDatabase() {
   })
 }
 
+export function useDropTable() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ connectionId, table }: { connectionId: string; table: string }) =>
+      SchemaService.DropTable(connectionId, table),
+    onSuccess: (_data, { connectionId }) => {
+      queryClient.invalidateQueries({ queryKey: schemaKeys.all(connectionId) })
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'multidb' && q.queryKey[1] === connectionId })
+    },
+  })
+}
+
 // ─── Query Execution ───
 export function useExecuteQuery() {
   const queryClient = useQueryClient()
@@ -109,10 +251,41 @@ export function useQueryHistory(connectionId: string, limit = 50) {
   })
 }
 
-export function useSnippets(connectionId: string) {
+export type SnippetScope = 'all' | 'global' | 'connection'
+
+interface UseSnippetFilters {
+  scope?: SnippetScope
+  folderPath?: string
+  tags?: string[]
+}
+
+interface SnippetMutationPayload {
+  connectionId: string
+  snippet: Snippet
+}
+
+function normalizeSnippetFilter(connectionId: string, filters?: UseSnippetFilters): SnippetListFilter {
+  return {
+    connectionId,
+    scope: filters?.scope ?? 'all',
+    folderPath: filters?.folderPath?.trim() ?? '',
+    tags: filters?.tags ?? [],
+  }
+}
+
+export function useSnippets(connectionId: string, filters?: UseSnippetFilters) {
+  const normalizedFilter = normalizeSnippetFilter(connectionId, filters)
+  const queryKey = [
+    'snippets',
+    connectionId,
+    normalizedFilter.scope,
+    normalizedFilter.folderPath,
+    normalizedFilter.tags.join('|'),
+  ] as const
+
   return useQuery({
-    queryKey: ['snippets', connectionId] as const,
-    queryFn: () => QueryService.ListSnippets(connectionId),
+    queryKey,
+    queryFn: () => QueryService.ListSnippetsWithFilter(normalizedFilter),
     enabled: !!connectionId,
   })
 }
@@ -120,10 +293,23 @@ export function useSnippets(connectionId: string) {
 export function useSaveSnippet() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (snippet: Parameters<typeof QueryService.SaveSnippet>[0]) =>
-      QueryService.SaveSnippet(snippet),
-    onSuccess: (_data, snippet) => {
-      queryClient.invalidateQueries({ queryKey: ['snippets', snippet.connectionId] })
+    mutationFn: ({ connectionId, snippet }: SnippetMutationPayload) =>
+      snippet.id > 0
+        ? QueryService.UpdateSnippet(connectionId, snippet)
+        : QueryService.CreateSnippet(connectionId, snippet),
+    onSuccess: (_data, { connectionId }) => {
+      queryClient.invalidateQueries({ queryKey: ['snippets', connectionId] })
+    },
+  })
+}
+
+export function useMoveSnippet() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ connectionId, id, folderPath }: { connectionId: string; id: number; folderPath: string }) =>
+      QueryService.MoveSnippet(connectionId, id, folderPath),
+    onSuccess: (_data, { connectionId }) => {
+      queryClient.invalidateQueries({ queryKey: ['snippets', connectionId] })
     },
   })
 }
@@ -131,9 +317,54 @@ export function useSaveSnippet() {
 export function useDeleteSnippet() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id }: { id: number; connectionId: string }) => QueryService.DeleteSnippet(id),
+    mutationFn: ({ id, connectionId }: { id: number; connectionId: string }) =>
+      QueryService.DeleteSnippetForConnection(connectionId, id),
     onSuccess: (_data, { connectionId }) => {
       queryClient.invalidateQueries({ queryKey: ['snippets', connectionId] })
+    },
+  })
+}
+
+export function usePreviewStructureChange() {
+  return useMutation({
+    mutationFn: ({
+      connectionId,
+      request,
+    }: {
+      connectionId: string
+      request: StructureChangeRequest
+    }) => previewStructureChange(connectionId, request),
+  })
+}
+
+export function useApplyStructureChange() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      connectionId,
+      request,
+    }: {
+      connectionId: string
+      request: StructureChangeRequest
+    }) => applyStructureChange(connectionId, request),
+    onSuccess: (result, { connectionId, request }) => {
+      if (!result.success) {
+        return
+      }
+
+      queryClient.invalidateQueries({ queryKey: schemaKeys.all(connectionId) })
+      queryClient.invalidateQueries({ queryKey: ['multidb', connectionId] })
+
+      if (request.mode === 'alterTable' && request.alterTable?.table) {
+        queryClient.invalidateQueries({
+          queryKey: schemaKeys.columns(connectionId, request.alterTable.table),
+        })
+      }
+      if (request.mode === 'createTable' && request.createTable?.table) {
+        queryClient.invalidateQueries({
+          queryKey: schemaKeys.columns(connectionId, request.createTable.table),
+        })
+      }
     },
   })
 }

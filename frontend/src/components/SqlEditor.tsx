@@ -10,6 +10,10 @@ interface SqlEditorProps {
   value: string
   onChange: (value: string) => void
   onExecute?: () => void
+  onExplain?: () => void
+  onOptimize?: () => void
+  explainDisabled?: boolean
+  explainDisabledReason?: string
   tables?: { name: string }[]
   views?: string[]
   functions?: { name: string }[]
@@ -141,6 +145,10 @@ export function SqlEditor({
   value,
   onChange,
   onExecute,
+  onExplain,
+  onOptimize,
+  explainDisabled = false,
+  explainDisabledReason,
   tables = [],
   views = [],
   functions = [],
@@ -161,6 +169,10 @@ export function SqlEditor({
   const functionsRef = useRef(functions)
   const connectionIdRef = useRef(connectionId)
   const connTypeRef = useRef(connType)
+  const onExplainRef = useRef(onExplain)
+  const onOptimizeRef = useRef(onOptimize)
+  const explainDisabledRef = useRef(explainDisabled)
+  const explainDisabledReasonRef = useRef(explainDisabledReason)
   const { settings } = useSettingsContext()
   const settingsRef = useRef(settings)
   const isMongo = connType === 'mongodb'
@@ -173,6 +185,10 @@ export function SqlEditor({
   useEffect(() => { viewsRef.current = views }, [views])
   useEffect(() => { functionsRef.current = functions }, [functions])
   useEffect(() => { connectionIdRef.current = connectionId; connTypeRef.current = connType; columnCacheRef.current.clear(); pendingFetchRef.current.clear() }, [connectionId, connType])
+  useEffect(() => { onExplainRef.current = onExplain }, [onExplain])
+  useEffect(() => { onOptimizeRef.current = onOptimize }, [onOptimize])
+  useEffect(() => { explainDisabledRef.current = explainDisabled }, [explainDisabled])
+  useEffect(() => { explainDisabledReasonRef.current = explainDisabledReason }, [explainDisabledReason])
   useEffect(() => { settingsRef.current = settings }, [settings])
 
   // Sync theme with app theme
@@ -193,7 +209,9 @@ export function SqlEditor({
   // Register completions — called ONCE at editor mount.
   // Reads data via refs so it always has the latest tables/views/functions.
   const registerCompletions = useCallback((monaco: typeof Monaco) => {
-    disposablesRef.current.forEach((d) => d.dispose())
+    disposablesRef.current.forEach((d) => {
+      d.dispose()
+    })
     disposablesRef.current = []
 
     const provider: Monaco.languages.CompletionItemProvider = {
@@ -417,6 +435,36 @@ export function SqlEditor({
       run: () => onExecute?.(),
     })
 
+    editor.addAction({
+      id: 'explain-query',
+      label: 'Explain Query',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE],
+      run: () => {
+        if (explainDisabledRef.current) {
+          const message = explainDisabledReasonRef.current || 'Explain is currently unavailable.'
+          monaco.editor.setModelMarkers(editor.getModel()!, 'explain-query', [
+            {
+              startLineNumber: 1,
+              startColumn: 1,
+              endLineNumber: 1,
+              endColumn: 1,
+              message,
+              severity: monaco.MarkerSeverity.Warning,
+            },
+          ])
+          return
+        }
+        onExplainRef.current?.()
+      },
+    })
+
+    editor.addAction({
+      id: 'optimize-query',
+      label: 'Optimize Query with AI',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyO],
+      run: () => onOptimizeRef.current?.(),
+    })
+
     // Focus
     editor.focus()
   }
@@ -424,7 +472,9 @@ export function SqlEditor({
   // Cleanup
   useEffect(() => {
     return () => {
-      disposablesRef.current.forEach((d) => d.dispose())
+      disposablesRef.current.forEach((d) => {
+        d.dispose()
+      })
       disposablesRef.current = []
     }
   }, [])
