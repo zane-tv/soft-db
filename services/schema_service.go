@@ -274,6 +274,10 @@ func (s *SchemaService) DropTable(connectionID string, table string) error {
 		return err
 	}
 
+	if drv.Type() == driver.Redis {
+		return fmt.Errorf("drop table is not supported for Redis connections")
+	}
+
 	dbType := drv.Type()
 	ddl := GenerateDropTableDDL(dbType, table)
 

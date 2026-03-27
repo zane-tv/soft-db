@@ -333,7 +333,7 @@ func analyzeQuery(query string, dbType driver.DatabaseType) *QueryAnalysis {
 		return analysis
 	}
 
-	if dbType == driver.MongoDB || looksLikeJSONQuery(trimmed) {
+	if dbType == driver.MongoDB || dbType == driver.Redis || looksLikeJSONQuery(trimmed) {
 		analysis.Status = queryAnalysisStatusLimited
 		analysis.Reasons = append(analysis.Reasons, "non-SQL query analysis is limited in v1")
 		analysis.Reasons = append(analysis.Reasons, "limited analysis does not imply the query is safe")
