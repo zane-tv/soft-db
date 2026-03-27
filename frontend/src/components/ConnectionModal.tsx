@@ -3,6 +3,7 @@ import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/
 import { useSaveConnection, useTestConnection } from '@/hooks/useConnections'
 import { useSettings } from '@/hooks/useSettings'
 import { useTranslation } from '@/lib/i18n'
+import { generateConnectionName } from '@/lib/connectionName'
 import { Dialogs } from '@wailsio/runtime'
 
 interface ConnectionModalProps {
@@ -18,6 +19,7 @@ const DB_TYPES = [
   { value: DatabaseType.SQLite, label: 'SQLite', icon: 'storage', color: '#44A8E0' },
   { value: DatabaseType.MongoDB, label: 'MongoDB', icon: 'data_object', color: '#00ED64' },
   { value: DatabaseType.Redshift, label: 'Redshift', icon: 'cloud', color: '#8C4FFF' },
+  { value: DatabaseType.Redis, label: 'Redis', icon: 'memory', color: '#DC382D' },
 ]
 
 const DEFAULT_PORTS: Record<string, number> = {
@@ -27,6 +29,7 @@ const DEFAULT_PORTS: Record<string, number> = {
   sqlite: 0,
   mongodb: 27017,
   redshift: 5439,
+  redis: 6379,
 }
 
 export function ConnectionModal({ open, onClose, editConnection }: ConnectionModalProps) {
@@ -49,6 +52,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
     uri: '',
   })
   const [useURI, setUseURI] = useState(false)
+  const [isAutoNamed, setIsAutoNamed] = useState(true)
 
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [testError, setTestError] = useState('')
@@ -69,6 +73,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         uri: editConnection.uri || '',
       })
       setUseURI(!!editConnection.uri)
+      setIsAutoNamed(false)
     } else {
       setForm({
         name: '',
@@ -83,10 +88,25 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         uri: '',
       })
       setUseURI(false)
+      setIsAutoNamed(true)
     }
     setTestResult('idle')
     setTestError('')
   }, [editConnection, open])
+
+  // Auto-generate connection name from type/host/port
+  useEffect(() => {
+    if (!isAutoNamed) return
+    const name = generateConnectionName(
+      form.type as string,
+      form.host,
+      form.port,
+      form.filePath,
+      form.uri,
+      form.database,
+    )
+    setForm(prev => ({ ...prev, name }))
+  }, [form.type, form.host, form.port, form.filePath, form.uri, form.database, isAutoNamed])
 
   const updateField = useCallback(<K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -151,16 +171,29 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
   }, [testMutation, buildConfig])
 
   const handleSave = useCallback(async () => {
+    if (testResult !== 'success') {
+      setTestResult('testing')
+      setTestError('')
+      try {
+        await testMutation.mutateAsync(buildConfig())
+        setTestResult('success')
+      } catch (err: unknown) {
+        setTestResult('error')
+        setTestError(err instanceof Error ? err.message : String(err))
+        return
+      }
+    }
     try {
       await saveMutation.mutateAsync(buildConfig())
       onClose()
     } catch {
       // error handled by mutation
     }
-  }, [saveMutation, buildConfig, onClose])
+  }, [saveMutation, testMutation, buildConfig, onClose, testResult])
 
   const isSQLite = form.type === DatabaseType.SQLite
   const isMongo = form.type === DatabaseType.MongoDB
+  const isRedis = form.type === DatabaseType.Redis
   const canSave = form.name.trim() && (
     isSQLite ? form.filePath.trim() || form.database.trim()
     : (useURI && isMongo) ? form.uri.trim()
@@ -216,10 +249,21 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
             <input
               id="conn-name"
               value={form.name}
-              onChange={(e) => updateField('name', e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val === '') {
+                  setIsAutoNamed(true)
+                } else {
+                  setIsAutoNamed(false)
+                  updateField('name', val)
+                }
+              }}
               className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all duration-200"
               placeholder="e.g. Production Database"
             />
+            {isAutoNamed && (
+              <p className="text-[10px] text-text-muted/40 mt-1">{t('modal.autoNameHint')}</p>
+            )}
           </div>
 
           {/* Database Type */}
@@ -350,20 +394,38 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                 </div>
               </div>
 
-              {/* Database */}
-              <div>
-                <label htmlFor="conn-database" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-                  {t('modal.database')} <span className="text-text-muted/40 normal-case font-normal">({t('modal.optional')})</span>
-                </label>
-                <input
-                  id="conn-database"
-                  value={form.database}
-                  onChange={(e) => updateField('database', e.target.value)}
-                  className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
-                  placeholder="my_database"
-                />
-                <p className="text-[10px] text-text-muted/40 mt-1">{t('modal.dbHint')}</p>
-              </div>
+              {isRedis ? (
+                <div>
+                  <label htmlFor="conn-db-number" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                    {t('modal.dbNumber')} <span className="text-text-muted/40 normal-case font-normal">({t('modal.optional')})</span>
+                  </label>
+                  <input
+                    id="conn-db-number"
+                    value={form.database}
+                    onChange={(e) => updateField('database', e.target.value)}
+                    type="number"
+                    min={0}
+                    max={15}
+                    className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main focus:ring-2 focus:ring-primary outline-none transition-all duration-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="0"
+                  />
+                  <p className="text-[10px] text-text-muted/40 mt-1">{t('modal.dbNumberHint')}</p>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="conn-database" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                    {t('modal.database')} <span className="text-text-muted/40 normal-case font-normal">({t('modal.optional')})</span>
+                  </label>
+                  <input
+                    id="conn-database"
+                    value={form.database}
+                    onChange={(e) => updateField('database', e.target.value)}
+                    className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
+                    placeholder="my_database"
+                  />
+                  <p className="text-[10px] text-text-muted/40 mt-1">{t('modal.dbHint')}</p>
+                </div>
+              )}
 
               {/* Username + Password */}
               <div className="grid grid-cols-2 gap-3">
