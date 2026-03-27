@@ -16,6 +16,7 @@ const (
 	SQLite     DatabaseType = "sqlite"
 	MongoDB    DatabaseType = "mongodb"
 	Redshift   DatabaseType = "redshift"
+	Redis      DatabaseType = "redis"
 )
 
 // ConnectionConfig holds connection parameters
@@ -176,6 +177,8 @@ func NewDriver(dbType DatabaseType) (Driver, error) {
 		return &MongoDriver{}, nil
 	case Redshift:
 		return &RedshiftDriver{}, nil
+	case Redis:
+		return &RedisDriver{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", dbType)
 	}

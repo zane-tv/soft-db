@@ -23,6 +23,7 @@ var validDatabaseTypes = map[driver.DatabaseType]bool{
 	driver.SQLite:     true,
 	driver.MongoDB:    true,
 	driver.Redshift:   true,
+	driver.Redis:      true,
 }
 
 // SerializeWorkspace converts connections, settings, and snippets into a .softdb JSON export.
