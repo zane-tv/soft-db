@@ -183,6 +183,82 @@ func TestMCPHandlers_ExecuteQuery_SafeMode_Blocks(t *testing.T) {
 	}
 }
 
+func TestMCPHandlers_ExecuteQuery_SafeMode_BlocksMongo(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ss := NewSettingsService(s)
+	cs := NewConnectionService(s, ss)
+
+	cfg := driver.ConnectionConfig{
+		ID: "conn-mongo-safe", Name: "SafeMongo", Type: driver.MongoDB,
+		MCPEnabled: true, SafeMode: true,
+	}
+	if _, err := cs.SaveConnection(cfg); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	drv := &mockDriver{dbType: driver.MongoDB, isConnected: true}
+	cs.mu.Lock()
+	cs.drivers["conn-mongo-safe"] = drv
+	cs.configs["conn-mongo-safe"] = cfg
+	cs.mu.Unlock()
+
+	qs := NewQueryService(cs, ss, s)
+	schemaS := NewSchemaService(cs)
+	state := &mcpState{}
+	state.set("conn-mongo-safe")
+	h := &MCPHandlers{connService: cs, queryService: qs, schemaService: schemaS, settingsService: ss, state: state}
+
+	result, err := h.handleExecuteQuery(context.Background(), makeReq(ExecuteQueryInput{
+		Query: `{"collection": "users", "action": "delete", "filter": {"active": false}}`,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected SafeMode to block MongoDB delete action")
+	}
+}
+
+func TestMCPHandlers_ExecuteQuery_SafeMode_BlocksRedis(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	ss := NewSettingsService(s)
+	cs := NewConnectionService(s, ss)
+
+	cfg := driver.ConnectionConfig{
+		ID: "conn-redis-safe", Name: "SafeRedis", Type: driver.Redis,
+		MCPEnabled: true, SafeMode: true,
+	}
+	if _, err := cs.SaveConnection(cfg); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	drv := &mockDriver{dbType: driver.Redis, isConnected: true}
+	cs.mu.Lock()
+	cs.drivers["conn-redis-safe"] = drv
+	cs.configs["conn-redis-safe"] = cfg
+	cs.mu.Unlock()
+
+	qs := NewQueryService(cs, ss, s)
+	schemaS := NewSchemaService(cs)
+	state := &mcpState{}
+	state.set("conn-redis-safe")
+	h := &MCPHandlers{connService: cs, queryService: qs, schemaService: schemaS, settingsService: ss, state: state}
+
+	for _, cmd := range []string{"DEL mykey", "FLUSHDB", "SET foo bar"} {
+		result, err := h.handleExecuteQuery(context.Background(), makeReq(ExecuteQueryInput{Query: cmd}))
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", cmd, err)
+		}
+		if !result.IsError {
+			t.Errorf("expected SafeMode to block Redis command %q", cmd)
+		}
+	}
+}
+
 func TestMCPHandlers_ExecuteQuery_SafeMode_AllowsSelect(t *testing.T) {
 	t.Parallel()
 

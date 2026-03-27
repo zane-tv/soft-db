@@ -404,9 +404,14 @@ func (h *MCPHandlers) handleGetRelationships(ctx context.Context, req *mcp.CallT
 		}
 	}
 
-	if connType == driver.MongoDB || connType == driver.Redis {
+	noFKTypes := map[driver.DatabaseType]bool{
+		driver.MongoDB: true,
+		driver.Redis:   true,
+		driver.SQLite:  true,
+	}
+	if noFKTypes[connType] {
 		return jsonText(map[string]any{
-			"message":       fmt.Sprintf("Foreign key relationships are not available for %s connections.", connType),
+			"message":       fmt.Sprintf("Foreign key introspection is not available for %s connections.", connType),
 			"relationships": []any{},
 		}), nil
 	}

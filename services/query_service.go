@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -760,8 +761,11 @@ func (s *QueryService) IsDestructiveQuery(connectionID string, query string) (bo
 }
 
 func isDestructiveQuery(query string, dbType driver.DatabaseType) bool {
-	if dbType == driver.MongoDB || dbType == driver.Redis {
-		return false
+	if dbType == driver.MongoDB {
+		return isDestructiveMongoQuery(query)
+	}
+	if dbType == driver.Redis {
+		return isDestructiveRedisQuery(query)
 	}
 
 	trimmed := strings.TrimSpace(query)
@@ -796,6 +800,58 @@ func isDestructiveQuery(query string, dbType driver.DatabaseType) bool {
 			if containsWord(stmt, "DROP") {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func isDestructiveMongoQuery(query string) bool {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+
+	destructiveActions := []string{
+		`"action":\s*"delete"`,
+		`"action":\s*"insert"`,
+		`"action":\s*"updateone"`,
+		`"action":\s*"updatemany"`,
+		`"action":\s*"dropindex"`,
+	}
+	for _, pattern := range destructiveActions {
+		if matched, _ := regexp.MatchString(pattern, lower); matched {
+			return true
+		}
+	}
+	return false
+}
+
+func isDestructiveRedisQuery(query string) bool {
+	lines := strings.Split(query, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		tokens := strings.Fields(strings.ToUpper(trimmed))
+		if len(tokens) == 0 {
+			continue
+		}
+		cmd := tokens[0]
+		switch cmd {
+		case "DEL", "UNLINK", "FLUSHDB", "FLUSHALL",
+			"SET", "SETNX", "SETEX", "PSETEX", "MSET", "MSETNX", "SETRANGE", "APPEND",
+			"INCR", "INCRBY", "INCRBYFLOAT", "DECR", "DECRBY",
+			"HSET", "HSETNX", "HMSET", "HDEL", "HINCRBY", "HINCRBYFLOAT",
+			"LPUSH", "RPUSH", "LPOP", "RPOP", "LSET", "LINSERT", "LREM", "LTRIM",
+			"SADD", "SREM", "SMOVE", "SPOP",
+			"ZADD", "ZREM", "ZINCRBY", "ZRANGESTORE",
+			"EXPIRE", "EXPIREAT", "PERSIST", "PEXPIRE", "PEXPIREAT",
+			"RENAME", "RENAMENX",
+			"MOVE", "COPY",
+			"XADD", "XDEL", "XTRIM":
+			return true
 		}
 	}
 	return false
