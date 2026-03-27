@@ -46,6 +46,9 @@ type AppSettings struct {
 	AIAPIKey   string `json:"aiApiKey"`
 	AIBaseURL  string `json:"aiBaseUrl"`
 	AIModel    string `json:"aiModel"`
+
+	MCPEnabled bool `json:"mcpEnabled"`
+	MCPPort    int  `json:"mcpPort"`
 }
 
 // DefaultSettings returns the default settings
@@ -88,6 +91,9 @@ func DefaultSettings() AppSettings {
 		// AI Provider
 		AIProvider: "openai",
 		AIModel:    "gpt-5.3-codex",
+
+		MCPEnabled: false,
+		MCPPort:    9090,
 	}
 }
 

@@ -163,6 +163,7 @@ func (s *Store) migrate() error {
 		{"ssh_password", "TEXT NOT NULL DEFAULT ''"},
 		{"ssh_key_path", "TEXT NOT NULL DEFAULT ''"},
 		{"safe_mode", "INTEGER NOT NULL DEFAULT 0"},
+		{"mcp_enabled", "INTEGER NOT NULL DEFAULT 1"},
 	} {
 		if err := s.addColumnIfMissing("connections", col.name, col.def); err != nil {
 			return err
@@ -360,31 +361,35 @@ func (s *Store) SaveConnection(cfg driver.ConnectionConfig) error {
 	if cfg.SafeMode {
 		safeMode = 1
 	}
+	mcpEnabled := 1
+	if !cfg.MCPEnabled {
+		mcpEnabled = 0
+	}
 
 	_, err = s.db.Exec(`
 		INSERT INTO connections (
 			id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode,
-			ssh_enabled, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_path, safe_mode
+			ssh_enabled, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_path, safe_mode, mcp_enabled
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, type=excluded.type, host=excluded.host, port=excluded.port,
 			database_name=excluded.database_name, username=excluded.username, password=excluded.password,
 			file_path=excluded.file_path, uri=excluded.uri, ssl_mode=excluded.ssl_mode,
 			ssh_enabled=excluded.ssh_enabled, ssh_host=excluded.ssh_host, ssh_port=excluded.ssh_port,
 			ssh_user=excluded.ssh_user, ssh_password=excluded.ssh_password, ssh_key_path=excluded.ssh_key_path,
-			safe_mode=excluded.safe_mode,
+			safe_mode=excluded.safe_mode, mcp_enabled=excluded.mcp_enabled,
 			updated_at=datetime('now')`,
 		cfg.ID, cfg.Name, cfg.Type, cfg.Host, cfg.Port, cfg.Database, cfg.Username, encryptedPwd,
 		cfg.FilePath, cfg.URI, cfg.SSLMode,
-		sshEnabled, cfg.SSHHost, cfg.SSHPort, cfg.SSHUser, encryptedSSHPwd, cfg.SSHKeyPath, safeMode)
+		sshEnabled, cfg.SSHHost, cfg.SSHPort, cfg.SSHUser, encryptedSSHPwd, cfg.SSHKeyPath, safeMode, mcpEnabled)
 	return err
 }
 
 func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 	rows, err := s.db.Query(`
 		SELECT id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode, last_used,
-		       ssh_enabled, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_path, safe_mode
+		       ssh_enabled, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_path, safe_mode, mcp_enabled
 		FROM connections ORDER BY updated_at DESC`)
 	if err != nil {
 		return nil, err
@@ -399,11 +404,12 @@ func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 		var uri sql.NullString
 		var sshEnabled int64
 		var safeModeInt int64
+		var mcpEnabledInt int64
 		var encSSHPwd string
 		if err := rows.Scan(
 			&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.Database, &c.Username, &c.Password,
 			&filePath, &uri, &c.SSLMode, &lastUsed,
-			&sshEnabled, &c.SSHHost, &c.SSHPort, &c.SSHUser, &encSSHPwd, &c.SSHKeyPath, &safeModeInt,
+			&sshEnabled, &c.SSHHost, &c.SSHPort, &c.SSHUser, &encSSHPwd, &c.SSHKeyPath, &safeModeInt, &mcpEnabledInt,
 		); err != nil {
 			return nil, err
 		}
@@ -415,6 +421,7 @@ func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 		}
 		c.SSHEnabled = sshEnabled != 0
 		c.SafeMode = safeModeInt != 0
+		c.MCPEnabled = mcpEnabledInt != 0
 		if filePath.Valid {
 			c.FilePath = filePath.String
 		}

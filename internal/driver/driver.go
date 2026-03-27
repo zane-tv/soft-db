@@ -43,7 +43,8 @@ type ConnectionConfig struct {
 	SSHPassword string `json:"sshPassword,omitempty"`
 	SSHKeyPath  string `json:"sshKeyPath,omitempty"`
 
-	SafeMode bool `json:"safeMode,omitempty"`
+	SafeMode   bool `json:"safeMode,omitempty"`
+	MCPEnabled bool `json:"mcpEnabled,omitempty"`
 }
 
 // QueryResult is returned from query execution
