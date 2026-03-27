@@ -16,6 +16,12 @@
   <a href="#-install-via-homebrew-macos"><img src="https://img.shields.io/badge/Homebrew-available-FBB040?style=flat-square&logo=homebrew&logoColor=white" alt="Homebrew" /></a>
 </p>
 
+<p align="center">
+  <a href="https://softdb.site">📖 Documentation</a> •
+  <a href="https://github.com/zane-tv/soft-db/releases">📥 Download</a> •
+  <a href="#-quick-start">🚀 Quick Start</a>
+</p>
+
 ---
 
 ## 📸 Screenshots
@@ -25,17 +31,23 @@
 
 ## ✨ Features
 
-- 🗄️ **Multi-Database Support** — PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift
+- 🗄️ **Multi-Database Support** — PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift, Redis
 - 🔀 **Multi-Database Browsing** — Browse all databases on a server with a 3-level tree (Connection → Database → Tables)
-- 🤖 **AI Assistant** — Built-in ChatGPT-powered chatbot with DB schema context, streaming responses, and per-connection chat history
+- 🤖 **AI Assistant** — Built-in chatbot with DB schema context, streaming responses, support for OpenAI, Anthropic, and local Ollama models
 - 📝 **Monaco SQL Editor** — Syntax highlighting, dynamic column autocomplete, multi-tab queries
 - 🔍 **Visual Table Explorer** — Browse schemas, tables, and columns with virtualized data grid
 - 🏗️ **Structure Designer** — Create and modify tables visually; MongoDB gets a native JSON Schema Validation editor
 - 🔗 **Multi-Connection Tabs** — Work with multiple databases side-by-side
 - ⚙️ **Connection Manager** — Save, organize, and quick-connect with AES-256-GCM encrypted credentials
+- 📊 **ER Diagram** — Auto-generated entity-relationship diagrams from foreign key metadata
+- 🛠️ **Query Builder** — Build SELECT queries visually without writing SQL
+- 📋 **Query History & Snippets** — Auto-saved query history with full-text search; save queries as named snippets
+- 📦 **Import & Export** — Workspace export/import (connections, settings, snippets) and database export (schema + data)
+- 🔒 **Safe Mode** — Per-connection toggle that blocks destructive queries (DROP, TRUNCATE, DELETE without WHERE)
+- 🌐 **SSH Tunneling** — Connect to databases behind firewalls using SSH key or password auth
 - 🖥️ **Custom App Bar** — Frameless window with custom title bar and window controls
 - 🌙 **Dark Mode** — Beautiful dark UI designed for long coding sessions
-- 🔒 **Security First** — Parameterized queries, encrypted credential storage, OAuth PKCE authentication
+- 🔐 **Security First** — Parameterized queries, encrypted credential storage, OAuth PKCE authentication
 
 ## 🗃️ Supported Databases
 
@@ -47,13 +59,14 @@
 | SQLite | ✅ Full support | — (single file) |
 | MongoDB | ✅ Full support | ✅ |
 | Redshift | ✅ Full support | ✅ |
+| Redis | ✅ Full support | ✅ (DB index) |
 
 ## 🤖 AI Assistant
 
-SoftDB includes a built-in AI chat assistant powered by OpenAI:
+SoftDB includes a built-in AI chat assistant with multi-provider support:
 
 - **DB-aware context** — Automatically injects your schema (tables, columns, types) into the AI prompt
-- **Multi-model** — Choose from GPT-5.3 Codex (default, optimized for SQL), GPT-5.4, GPT-5, GPT-5 Mini, o4-mini, and more
+- **Multi-provider** — OpenAI (GPT-4o, GPT-5.3 Codex), Anthropic (Claude), and Ollama (local, free)
 - **Streaming** — Real-time response streaming via Wails events
 - **Per-connection isolation** — Each connection tab has its own chat history
 
@@ -129,7 +142,7 @@ wails3 build
 | **State** | TanStack Query |
 | **Styling** | Tailwind CSS |
 | **Encryption** | AES-256-GCM (credentials & OAuth tokens) |
-| **AI** | OpenAI Codex API |
+| **AI** | OpenAI, Anthropic, Ollama |
 
 ## 📁 Project Structure
 
@@ -141,11 +154,14 @@ soft-db/
 │   ├── query_service        # Query execution (parameterized)
 │   ├── schema_service       # Schema introspection & multi-DB
 │   ├── edit_service         # CRUD operations on table data
+│   ├── export_service       # Database & workspace export
+│   └── import_service       # Database & workspace import
 │   ├── settings_service     # User preferences
 │   ├── ai_service           # AI chat proxy with streaming
 │   └── oauth_service        # OAuth 2.0 PKCE for ChatGPT
 ├── internal/
-│   ├── driver/              # Database drivers (Postgres, MySQL, SQLite, MongoDB, Redshift)
+│   ├── driver/              # Database drivers (Postgres, MySQL, SQLite, MongoDB, Redshift, Redis)
+│   ├── tunnel/              # SSH tunnel management
 │   ├── store/               # Local SQLite store (connections, settings, chat history, OAuth tokens)
 │   └── crypto/              # AES-256-GCM encryption for credentials
 ├── frontend/

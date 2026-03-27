@@ -1,49 +1,116 @@
 ---
 title: SoftDB Documentation
-description: Documentation for SoftDB — Modern Database Management Tool for PostgreSQL, MySQL, SQLite, MongoDB, and more.
+description: Documentation for SoftDB — Modern Database Management Tool for PostgreSQL, MySQL, SQLite, MongoDB, Redis, and more.
 template: splash
 hero:
-  title: SoftDB Docs
-  tagline: Connect to PostgreSQL, MySQL, SQLite, MongoDB, Redis, and more — with a beautiful cross-platform desktop app.
+  title: SoftDB
+  tagline: Modern Database Management Tool — Connect, explore, and manage PostgreSQL, MySQL, SQLite, MongoDB, Redis, and more from a single, beautiful desktop app.
   image:
     file: ../../assets/screenshots/connection-hub.png
-    alt: SoftDB Connection Hub showing database connections
+    alt: SoftDB Connection Hub
   actions:
     - text: Get Started
       link: /getting-started/introduction/
       icon: right-arrow
-    - text: View on GitHub
-      link: https://github.com/zane-tv/soft-db
+    - text: Download
+      link: https://github.com/zane-tv/soft-db/releases
       variant: minimal
       icon: external
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-## Features
+## Why SoftDB?
 
 <CardGrid>
-  <Card title="Multi-Database Support" icon="list-format">
-    Connect to PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift, and Redis from a single app.
+  <Card title="Cross-Platform" icon="laptop">
+    Native desktop app for Windows, macOS, and Linux. Built with Go + React via Wails v3 — fast and lightweight, no Electron overhead.
   </Card>
-  <Card title="AI Assistant" icon="star">
-    Built-in AI chat with database schema context. Get SQL suggestions and query optimization powered by GPT.
+  <Card title="7 Databases, One App" icon="list-format">
+    PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift, and Redis. No more switching between different tools.
   </Card>
-  <Card title="Monaco SQL Editor" icon="pencil">
-    Full-featured SQL editor with syntax highlighting, dynamic column autocomplete, and multi-tab queries.
+  <Card title="AI-Powered" icon="star">
+    Built-in AI assistant understands your schema. Supports OpenAI, Anthropic, and Ollama (local). Get context-aware SQL instantly.
   </Card>
-  <Card title="Visual Table Explorer" icon="open-book">
-    Browse schemas, tables, and columns with a virtualized data grid and visual structure designer.
+  <Card title="Secure by Default" icon="approve-check">
+    AES-256-GCM encrypted credentials, parameterized queries, OAuth PKCE, and SSH tunneling support.
+  </Card>
+</CardGrid>
+
+## Core Features
+
+### SQL Editor
+
+Full-featured Monaco editor with syntax highlighting, schema-aware autocomplete, multi-tab queries, and integrated snippets.
+
+![SQL Editor](../../assets/screenshots/sql-editor-query.png)
+
+<CardGrid>
+  <LinkCard title="SQL Editor Guide" href="/features/sql-editor/" description="Autocomplete, shortcuts, snippets, and query execution" />
+  <LinkCard title="Keyboard Shortcuts" href="/features/keyboard-shortcuts/" description="Complete shortcut reference for power users" />
+</CardGrid>
+
+### AI Assistant
+
+Chat with an AI that knows your database schema. Use @table mentions to include column metadata. Supports OpenAI, Anthropic, and local Ollama models.
+
+![AI Assistant](../../assets/screenshots/ai-chat.png)
+
+<LinkCard title="AI Assistant Guide" href="/features/ai-assistant/" description="Setup providers, use schema context, optimize queries" />
+
+### Data Grid & Table Explorer
+
+Virtualized data grid with inline cell editing, sorting, filtering, and pagination. Edit data directly — changes batched as parameterized UPDATE statements.
+
+![Table Explorer](../../assets/screenshots/table-explorer.png)
+
+<CardGrid>
+  <LinkCard title="Data Grid Guide" href="/features/data-grid/" description="Inline editing, sorting, filtering, and export" />
+  <LinkCard title="Table Structure" href="/features/table-structure/" description="Browse and modify columns, indexes, and foreign keys" />
+</CardGrid>
+
+### Visual Tools
+
+<CardGrid>
+  <Card title="ER Diagram" icon="open-book">
+    Auto-generated entity-relationship diagrams from FK metadata with ELK auto-layout.
+  </Card>
+  <Card title="Query Builder" icon="pencil">
+    Build SELECT queries visually — pick tables, columns, conditions, ordering without writing SQL.
+  </Card>
+  <Card title="Query History & Snippets" icon="document">
+    Every query auto-saved with full-text search. Promote to reusable named snippet.
+  </Card>
+  <Card title="Import & Export" icon="right-arrow">
+    Export/import workspaces (connections, settings, snippets) and databases (schema + data).
+  </Card>
+</CardGrid>
+
+<CardGrid>
+  <Card title="Safe Mode" icon="approve-check">
+    Per-connection toggle blocking destructive queries — DROP, TRUNCATE, DELETE without WHERE.
+  </Card>
+  <Card title="SSH Tunneling" icon="random">
+    Connect to databases behind firewalls using SSH key or password auth.
   </Card>
 </CardGrid>
 
 ## Supported Databases
 
 <CardGrid>
-  <Card title="PostgreSQL" icon="approve-check">Full support with multi-database browsing</Card>
-  <Card title="MySQL / MariaDB" icon="approve-check">Full support with multi-database browsing</Card>
-  <Card title="SQLite" icon="approve-check">Open and manage SQLite database files directly</Card>
-  <Card title="MongoDB" icon="approve-check">Collection browsing, JSON Schema validation editor</Card>
-  <Card title="Redshift" icon="approve-check">Connect to Amazon Redshift clusters</Card>
-  <Card title="Redis" icon="approve-check">Key-value browsing and management</Card>
+  <LinkCard title="PostgreSQL" href="/databases/postgresql/" description="Full support — multi-DB browsing, JSONB, CTEs, window functions" />
+  <LinkCard title="MySQL / MariaDB" href="/databases/mysql/" description="Full support — TLS modes, multi-DB browsing, DDL management" />
+  <LinkCard title="SQLite" href="/databases/sqlite/" description="File-based — open .db files directly, no server required" />
+  <LinkCard title="MongoDB" href="/databases/mongodb/" description="JSON commands, collection browsing, Schema Validation editor" />
+  <LinkCard title="Redshift" href="/databases/redshift/" description="PostgreSQL wire protocol, DISTKEY/SORTKEY, cluster support" />
+  <LinkCard title="Redis" href="/databases/redis/" description="Key browsing by type, DB index switching, CLI commands" />
+</CardGrid>
+
+## Get Started
+
+<CardGrid>
+  <LinkCard title="Installation" href="/getting-started/installation/" description="Download for Windows, macOS, or Linux. Homebrew available." />
+  <LinkCard title="Quick Start" href="/getting-started/quick-start/" description="Connect to your first database in under 5 minutes." />
+  <LinkCard title="Connection Management" href="/databases/overview/" description="SSH tunnels, SSL/TLS, URI import, and connection settings." />
+  <LinkCard title="Security" href="/security/security/" description="How SoftDB protects your credentials and data." />
 </CardGrid>
