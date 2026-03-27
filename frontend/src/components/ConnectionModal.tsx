@@ -250,13 +250,8 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
               id="conn-name"
               value={form.name}
               onChange={(e) => {
-                const val = e.target.value
-                if (val === '') {
-                  setIsAutoNamed(true)
-                } else {
-                  setIsAutoNamed(false)
-                  updateField('name', val)
-                }
+                setIsAutoNamed(false)
+                updateField('name', e.target.value)
               }}
               className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all duration-200"
               placeholder="e.g. Production Database"
