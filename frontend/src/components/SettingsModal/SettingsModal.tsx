@@ -1,15 +1,17 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { useTheme, ThemeOption, type ThemeId } from '@/hooks/useTheme'
 import { useSettingsContext, type AppSettings } from '@/hooks/useSettings'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
+import * as MCPService from '../../../bindings/soft-db/services/mcpservice'
 
 interface SettingsModalProps {
   open: boolean
   onClose: () => void
 }
 
-type SectionId = 'general' | 'appearance' | 'editor' | 'execution' | 'connection' | 'data' | 'about'
+type SectionId = 'general' | 'appearance' | 'editor' | 'execution' | 'connection' | 'data' | 'mcp' | 'about'
 
 function getSections(t: (key: TranslationKey) => string): { id: SectionId; label: string; icon: string }[] {
   return [
@@ -19,6 +21,7 @@ function getSections(t: (key: TranslationKey) => string): { id: SectionId; label
     { id: 'execution', label: t('settings.execution'), icon: 'bolt' },
     { id: 'connection', label: t('settings.connection'), icon: 'cable' },
     { id: 'data', label: t('settings.data'), icon: 'table_chart' },
+    { id: 'mcp', label: 'MCP Server', icon: 'hub' },
     { id: 'about', label: t('settings.about'), icon: 'info' },
   ]
 }
@@ -124,6 +127,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             )}
             {activeSection === 'data' && (
               <DataSection settings={settings} updateSetting={updateSetting} t={t} />
+            )}
+            {activeSection === 'mcp' && (
+              <MCPSection settings={settings} updateSetting={updateSetting} t={t} />
             )}
             {activeSection === 'about' && (
               <AboutSection t={t} />
@@ -628,7 +634,7 @@ function ThemeCard({
         )}
       </div>
 
-      {/* Color dots */}
+        {/* Color dots */}
       <div className="flex gap-1.5">
         {Object.entries(theme.colors).map(([name, color]) => (
           <div
@@ -639,5 +645,99 @@ function ThemeCard({
         ))}
       </div>
     </button>
+  )
+}
+
+function MCPSection({ settings, updateSetting }: SectionProps) {
+  const { data: status, refetch } = useQuery({
+    queryKey: ['mcp', 'status'],
+    queryFn: () => MCPService.GetStatus(),
+    refetchInterval: 2000,
+  })
+
+  const handleToggle = useCallback(async (enabled: boolean) => {
+    updateSetting('mcpEnabled', enabled)
+    try {
+      if (enabled) {
+        await MCPService.StartServer()
+      } else {
+        await MCPService.StopServer()
+      }
+    } catch {
+      updateSetting('mcpEnabled', !enabled)
+    }
+    refetch()
+  }, [updateSetting, refetch])
+
+  const port = settings.mcpPort || 9090
+  const running = status?.running ?? false
+  const configSnippet = JSON.stringify({ mcpServers: { softdb: { url: `http://localhost:${port}/mcp` } } }, null, 2)
+
+  const copySnippet = useCallback(() => {
+    navigator.clipboard.writeText(configSnippet).catch(() => {})
+  }, [configSnippet])
+
+  return (
+    <>
+      <SettingRow
+        icon="hub"
+        label="Enable MCP Server"
+        description="Allow AI agents (Claude, Cursor) to connect to your databases via MCP protocol"
+      >
+        <Toggle checked={settings.mcpEnabled ?? false} onChange={handleToggle} />
+      </SettingRow>
+
+      <SettingRow
+        icon="lan"
+        label="Server Port"
+        description="HTTP port for the MCP server (requires restart to take effect)"
+      >
+        <NumberInput
+          value={port}
+          onChange={(v) => updateSetting('mcpPort', v)}
+          min={1024}
+          max={65535}
+        />
+      </SettingRow>
+
+      <div className="py-3 border-b border-border-subtle/20">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="material-symbols-outlined text-[18px] text-text-muted">circle</span>
+          <span className="text-sm font-medium text-text-main">Status</span>
+          <span className={`flex items-center gap-1.5 text-xs font-medium ${running ? 'text-emerald-500' : 'text-text-muted'}`}>
+            {running ? (
+              <>
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Running on port {status?.port ?? port}
+              </>
+            ) : (
+              <>
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-text-muted/40" />
+                Stopped
+              </>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {running && (
+        <div className="py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-text-muted uppercase tracking-wider">Claude / Cursor Config</span>
+            <button
+              type="button"
+              onClick={copySnippet}
+              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-main transition-colors"
+            >
+              <span className="material-symbols-outlined text-[14px]">content_copy</span>
+              Copy
+            </button>
+          </div>
+          <pre className="bg-bg-app border border-border-subtle rounded-lg p-3 text-xs text-text-muted font-mono overflow-x-auto">
+            {configSnippet}
+          </pre>
+        </div>
+      )}
+    </>
   )
 }

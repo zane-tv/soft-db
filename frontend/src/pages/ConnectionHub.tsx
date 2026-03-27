@@ -7,6 +7,7 @@ import {
   useConnect,
   useDisconnect,
   usePingAll,
+  useSaveConnection,
 } from '@/hooks/useConnections'
 import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 import { ConnectionModal } from '@/components/ConnectionModal'
@@ -90,6 +91,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const connectMutation = useConnect()
   const disconnectMutation = useDisconnect()
   const deleteMutation = useDeleteConnection()
+  const saveMutation = useSaveConnection()
 
   // Filter connections by search + type + status
   const filtered = useMemo(() => {
@@ -329,6 +331,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
                     contextMenu?.id === conn.id ? null : { id: conn.id, x: e.clientX, y: e.clientY }
                   )
                 }}
+                onMCPToggle={(enabled) => saveMutation.mutate({ ...conn, mcpEnabled: enabled })}
               />
             ))}
 
@@ -451,9 +454,10 @@ interface ConnectionCardProps {
   colors: { bg: string; accent: string; icon: string; label: string }
   onClick: () => void
   onMenuClick: (e: React.MouseEvent) => void
+  onMCPToggle: (enabled: boolean) => void
 }
 
-function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardProps) {
+function ConnectionCard({ conn, colors, onClick, onMenuClick, onMCPToggle }: ConnectionCardProps) {
   const { data: settingsData } = useSettings()
   const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
   const status = conn.status as 'connected' | 'idle' | 'offline'
@@ -478,12 +482,25 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardPr
             {colors.icon}
           </span>
         </div>
-        <button
-          onClick={onMenuClick}
-          className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-text-main p-1.5 rounded-md hover:bg-white/10 transition-all duration-200"
-        >
-          <span className="material-symbols-outlined text-[20px]">more_horiz</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); onMCPToggle(!(conn.mcpEnabled ?? true)) }}
+            title={conn.mcpEnabled ?? true ? 'Disable MCP access' : 'Enable MCP access'}
+            className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-md transition-all duration-200 ${
+              conn.mcpEnabled ?? true
+                ? 'text-primary/70 hover:text-primary hover:bg-primary/10'
+                : 'text-text-muted/40 hover:text-text-muted hover:bg-white/5'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">hub</span>
+          </button>
+          <button
+            onClick={onMenuClick}
+            className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-text-main p-1.5 rounded-md hover:bg-white/10 transition-all duration-200"
+          >
+            <span className="material-symbols-outlined text-[20px]">more_horiz</span>
+          </button>
+        </div>
       </div>
 
       {/* Bottom Info */}
