@@ -1,0 +1,66 @@
+---
+title: Safe Mode
+description: Per-connection query safety controls to prevent accidental data changes
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Safe Mode is a per-connection guard that intercepts destructive SQL before it runs. When enabled, SoftDB analyzes every query you execute and asks for confirmation before allowing anything that could delete or alter data. It's a second line of defense against the kind of mistake that's easy to make and hard to undo.
+
+## Enabling Safe Mode
+
+Safe Mode is configured per connection, not globally. To enable it:
+
+1. Open the **Connection Hub** and click the edit icon on the connection you want to protect, or click **New Connection** to set it up from the start.
+2. In the connection form, scroll to the bottom and toggle **Safe Mode** on.
+3. Save the connection.
+
+The toggle is labeled **Safe Mode** and is off by default. Once saved, the setting persists — you don't need to re-enable it each session.
+
+## How It Works
+
+When Safe Mode is active, SoftDB runs a risk analysis on every query before execution. The analysis parses the SQL, identifies the leading operation, and assigns a risk level:
+
+| Risk level | Description |
+|-----------|-------------|
+| **None** | Read-only operations (`SELECT`, `SHOW`, `DESCRIBE`) |
+| **Low** | Inspection operations (`EXPLAIN`) |
+| **Medium** | Data mutations (`INSERT`, `UPDATE`, `DELETE`, `CREATE`, `BEGIN`) |
+| **High** | Destructive operations (`DROP`, `TRUNCATE`, `ALTER`) |
+
+Queries classified as **medium** or **high** risk trigger a confirmation dialog. The dialog shows the detected operation, the risk level, and the full query text. You must click **Confirm** to proceed or **Cancel** to abort.
+
+Read-only queries (`SELECT`, `SHOW`, `DESCRIBE`, `PRAGMA`) pass through without any prompt.
+
+## What Gets Blocked (Pending Confirmation)
+
+Safe Mode requires confirmation for:
+
+- `DROP TABLE`, `DROP DATABASE`, `DROP INDEX` — permanent schema deletion
+- `DELETE` without a `WHERE` clause — deletes all rows in a table
+- `TRUNCATE` — empties a table instantly, bypassing row-by-row deletion
+- `ALTER TABLE` — schema changes that may be irreversible
+- `UPDATE` without a `WHERE` clause — modifies every row in a table
+- Any `INSERT`, `UPDATE`, `DELETE`, or `MERGE` statement (medium risk)
+
+<Aside type="note">
+  Safe Mode uses heuristic analysis, not a full SQL parser. It classifies queries based on the leading SQL keyword and a keyword scan of the statement. Complex queries with CTEs (`WITH ... AS`) or dynamic SQL may be classified conservatively and prompt for confirmation even when they're safe.
+</Aside>
+
+## What Passes Through Freely
+
+- `SELECT`, `SHOW`, `DESCRIBE`, `DESC`, `PRAGMA`, `VALUES` — all read-only
+- `EXPLAIN` on a read-only query
+- MongoDB and Redis queries (classified as limited; always prompt for confirmation)
+
+## Best Practices
+
+**Enable Safe Mode on production connections.** It's the most important place to have it. A mistyped `DELETE` or a forgotten `WHERE` clause on a production database can cause real damage. The extra confirmation click is worth it.
+
+**Leave it off for local development.** When you're iterating quickly on a dev database, the confirmation dialogs slow you down. Safe Mode is designed for connections where mistakes have consequences.
+
+**Use it alongside read-only database users.** Safe Mode is a UI-level guard, not a database-level permission. For the strongest protection on production, combine Safe Mode with a database user that has only `SELECT` privileges. Safe Mode catches mistakes; the database user prevents them at the server level.
+
+<Aside type="caution">
+  Safe Mode does not prevent all dangerous queries. It relies on static analysis of the query text. A query that looks safe syntactically but has destructive runtime behavior (e.g. a stored procedure that drops tables) will not be flagged.
+</Aside>

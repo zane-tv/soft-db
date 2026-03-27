@@ -1,0 +1,87 @@
+---
+title: Data Grid
+description: Virtualized data grid with inline editing, sorting, filtering, and export
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The Data Grid displays query results and table data in a fast, spreadsheet-like interface. It's built on a virtualized renderer, so it handles thousands of rows without slowing down.
+
+![Data grid showing table rows](../../../assets/screenshots/table-explorer.png)
+
+## Viewing Results
+
+After running a query or opening a table, results appear in the grid. Each column header shows the column name, and rows are displayed with type-aware formatting — dates look like dates, numbers align right, nulls show as a distinct `NULL` badge.
+
+The status bar at the bottom shows:
+
+- **Row count** — total rows in the result or table
+- **Page** — current page and total pages for paginated table views
+- **Execution time** — how long the query took to run
+
+For large tables, data loads in pages. Use the pagination controls to move between pages or change the page size.
+
+## Sorting and Filtering
+
+**Sorting:** Click any column header to sort by that column. Click again to reverse the sort direction. A third click clears the sort.
+
+**Column filters:** Click the filter icon in the toolbar to reveal per-column filter inputs. Filters are type-aware:
+
+- Text columns support contains, starts with, ends with, and exact match
+- Number columns support `=`, `!=`, `>`, `<`, `>=`, `<=`
+- Date columns support from/to range filtering
+- Boolean columns show a true/false toggle
+
+**Global search:** The search box in the toolbar filters across all visible columns simultaneously. Useful for quickly finding a specific value when you don't know which column it's in.
+
+Sorting and filtering happen client-side on the loaded page. They don't re-run the query.
+
+## Inline Editing
+
+Click any cell to edit it directly. The cell becomes an input field. Press Enter or Tab to confirm, or Escape to cancel.
+
+Edited cells are highlighted in yellow until you apply or discard the changes. Multiple cells can be edited before applying — the grid tracks all pending changes together.
+
+When you're ready to commit:
+
+- **Apply** — generates parameterized UPDATE statements and runs them against the database
+- **Review SQL** — shows the exact SQL that will run before you confirm (available when "Confirm mutations" is enabled in Settings)
+- **Discard** — reverts all pending edits back to the original values
+
+<Aside type="caution">
+Inline editing requires the table to have a primary key. Without one, SoftDB can't generate safe UPDATE statements that target specific rows.
+</Aside>
+
+## Row Operations
+
+Right-click any row to open the context menu. From there you can:
+
+- **Edit row** — opens a form modal with all columns laid out for easier editing of wide tables
+- **Duplicate row** — copies the row's values into a new record form, ready to insert
+- **Delete row** — removes the row after confirmation
+
+The toolbar also has an **Add record** button that opens a blank form for inserting a new row.
+
+## Export
+
+The export button in the toolbar gives you two options:
+
+**Quick CSV export** — downloads the currently visible rows as a CSV file immediately. What you see is what you get, including any active filters.
+
+**Full export modal** — lets you export the entire table or query result, not just the current page. Choose from CSV, JSON, or other formats. The export runs server-side so it works even for tables with millions of rows.
+
+## Column Resizing
+
+Drag the border between column headers to resize columns. The grid remembers column widths within the session.
+
+Double-click a column border to auto-fit the column to its content width.
+
+## Row Density
+
+Three density options control how much vertical space each row takes:
+
+- **Compact** — 28px rows, fits more data on screen
+- **Default** — 36px rows, comfortable for reading
+- **Comfortable** — 44px rows, easier to click individual cells
+
+Change density in **Settings > Appearance > Row density**.

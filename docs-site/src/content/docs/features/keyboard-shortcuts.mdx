@@ -1,0 +1,79 @@
+---
+title: Keyboard Shortcuts
+description: Complete list of keyboard shortcuts in SoftDB
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+SoftDB is designed to keep your hands on the keyboard. Most actions in the SQL Editor, data grid, and connection hub have shortcuts so you can move fast without reaching for the mouse.
+
+<Aside type="tip">
+  On macOS, replace **Ctrl** with **Cmd** for all shortcuts listed below.
+</Aside>
+
+## SQL Editor
+
+These shortcuts work when the Monaco editor is focused.
+
+| Action | Windows / Linux | macOS |
+|--------|----------------|-------|
+| Execute query | `Ctrl+E` | `Cmd+E` |
+| Explain query | `Ctrl+Shift+E` | `Cmd+Shift+E` |
+| Optimize with AI | `Ctrl+Shift+O` | `Cmd+Shift+O` |
+| Save as snippet | `Ctrl+S` | `Cmd+S` |
+| Trigger autocomplete | `Ctrl+Space` | `Ctrl+Space` |
+| Comment / uncomment line | `Ctrl+/` | `Cmd+/` |
+| Format (indent) selection | `Tab` | `Tab` |
+| Go to line | `Ctrl+G` | `Cmd+G` |
+| Find in editor | `Ctrl+F` | `Cmd+F` |
+| Select all | `Ctrl+A` | `Cmd+A` |
+| Undo | `Ctrl+Z` | `Cmd+Z` |
+| Redo | `Ctrl+Shift+Z` | `Cmd+Shift+Z` |
+
+<Aside type="note">
+  **Explain query** is only available for PostgreSQL connections. The button is disabled for other database types.
+</Aside>
+
+## Data Grid
+
+These shortcuts work when a cell or the grid is focused.
+
+| Action | Key |
+|--------|-----|
+| Start editing a cell | `Enter` or double-click |
+| Confirm cell edit | `Enter` or `Tab` |
+| Cancel cell edit | `Escape` |
+| Navigate between cells | Arrow keys |
+| Move to next cell (edit mode) | `Tab` |
+| Move to previous cell (edit mode) | `Shift+Tab` |
+| Select all text in cell | `Ctrl+A` / `Cmd+A` (while editing) |
+
+## Query History Drawer
+
+| Action | Key |
+|--------|-----|
+| Close drawer | `Escape` |
+
+## General / Navigation
+
+| Action | Windows / Linux | macOS |
+|--------|----------------|-------|
+| Open connection search | `Ctrl+K` | `Cmd+K` |
+| Close modal or panel | `Escape` | `Escape` |
+
+## Monaco Editor Built-ins
+
+The SQL Editor is powered by Monaco (the same editor as VS Code), so standard Monaco shortcuts also work:
+
+| Action | Windows / Linux | macOS |
+|--------|----------------|-------|
+| Move line up | `Alt+Up` | `Option+Up` |
+| Move line down | `Alt+Down` | `Option+Down` |
+| Duplicate line | `Shift+Alt+Down` | `Shift+Option+Down` |
+| Delete line | `Ctrl+Shift+K` | `Cmd+Shift+K` |
+| Add cursor above | `Ctrl+Alt+Up` | `Cmd+Option+Up` |
+| Add cursor below | `Ctrl+Alt+Down` | `Cmd+Option+Down` |
+| Select next occurrence | `Ctrl+D` | `Cmd+D` |
+| Select all occurrences | `Ctrl+Shift+L` | `Cmd+Shift+L` |
+
+For the full Monaco keyboard reference, see the [VS Code keyboard shortcuts documentation](https://code.visualstudio.com/docs/getstarted/keybindings).

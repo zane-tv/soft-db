@@ -1,0 +1,112 @@
+---
+title: Import & Export
+description: Export and import workspaces, databases, and query results
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+SoftDB has two distinct import/export systems: **Workspace** operations move your SoftDB configuration (connections, settings, snippets) between machines, while **Database** operations move actual data in and out of your databases.
+
+## Workspace Export
+
+Workspace export bundles everything SoftDB knows about your setup into a single `.softdb` file:
+
+- All saved connections (credentials are included, encrypted)
+- Application settings and preferences
+- All saved snippets (both connection-scoped and global)
+
+### How to export
+
+Open **Settings** and navigate to the **Workspace** section, then click **Export Workspace**. The export modal opens.
+
+**Passphrase (optional but recommended):** Enter a passphrase to encrypt the exported file. The passphrase protects your connection credentials inside the bundle. If you leave it blank, the file is still created but credentials are stored with only the default encryption — anyone with the file can import it without a password.
+
+<Aside type="caution">
+  If you set a passphrase, you must provide the same passphrase when importing. There's no recovery option if you forget it.
+</Aside>
+
+Click **Start Export** and choose where to save the file. The export completes instantly for most workspaces.
+
+---
+
+## Workspace Import
+
+To restore a workspace or move your setup to a new machine, open **Settings → Workspace → Import Workspace**.
+
+<Steps>
+1. Click **Select File** and choose a `.softdb` file (or a `.json` workspace export from an older version).
+2. Enter the passphrase if the file was exported with one.
+3. Choose a **conflict strategy** for how to handle items that already exist in your current workspace.
+4. Click **Start Import**.
+</Steps>
+
+### Conflict strategies
+
+| Strategy | What it does |
+|----------|-------------|
+| **Skip** | Keeps your existing item; ignores the incoming one |
+| **Replace** | Overwrites your existing item with the imported version |
+| **Rename** | Imports the incoming item with a new name (e.g. `My DB (2)`) |
+
+After import, a summary shows how many connections, snippets, and settings were imported or skipped.
+
+---
+
+## Database Export
+
+Database export writes schema and/or data from a live database to a file on your machine. Access it from the **sidebar context menu** on a database node, or from the **Export** button in the Table Explorer toolbar.
+
+### What you can export
+
+**Schema** — `CREATE TABLE` statements and other DDL for the selected tables.
+
+**Data** — the actual rows, in your chosen format.
+
+You can export schema only, data only, or both together.
+
+### Export formats
+
+| Format | Best for |
+|--------|---------|
+| **SQL INSERT** | Restoring data into the same or a compatible database |
+| **CSV** | Spreadsheets, data analysis tools, or simple data transfer |
+| **JSON** | APIs, JavaScript applications, or human-readable backups |
+| **Extended JSON** | MongoDB exports (preserves BSON types like `ObjectId`, `Date`) |
+
+### Selecting tables
+
+The export modal lists all tables in the database. All are selected by default. Uncheck any tables you want to exclude, or use **Deselect All** / **Select All** to toggle the whole list.
+
+### Progress and cancellation
+
+Large exports show a progress bar with a percentage and a phase label (e.g. "Exporting table users"). Click **Cancel** at any time to stop the export. A partial file may be written to disk — delete it manually if you don't need it.
+
+---
+
+## Table Export
+
+You can export a single table directly from the data grid or the sidebar:
+
+- **From the sidebar** — right-click a table and choose **Export**
+- **From the grid toolbar** — click the export icon while viewing a table
+
+This opens the same export modal, but pre-scoped to that one table. Choose CSV, JSON, or SQL INSERT and click **Start Export**.
+
+---
+
+## Database Import
+
+Database import reads a SQL, JSON, or CSV file and applies it to a target database. Access it from **sidebar context menu → Import** on a database node.
+
+<Steps>
+1. Click **Select File** and choose a `.sql`, `.json`, or `.csv` file.
+2. Set the **Schema conflict** strategy: **Skip** (don't recreate existing tables) or **Replace** (drop and recreate).
+3. Set the **Data conflict** strategy: **Skip** (don't insert rows that already exist) or **Replace** (overwrite existing rows).
+4. Click **Start Import**.
+</Steps>
+
+A progress bar tracks the import. When it finishes, the schema tree refreshes automatically to reflect any new tables.
+
+<Aside type="caution">
+  **MySQL and MariaDB users:** DDL statements like `CREATE TABLE` and `ALTER TABLE` cause an implicit `COMMIT` in MySQL/MariaDB. This means schema changes can't be rolled back even if the import fails partway through. Always back up your database before importing into a production MySQL or MariaDB instance.
+</Aside>

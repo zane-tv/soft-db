@@ -23,3 +23,6 @@ testdata/sample.db-wal
 docs-site/node_modules/
 docs-site/dist/
 docs-site/.astro/
+opencode.json
+.gitignore
+coverage.out

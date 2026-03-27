@@ -1,0 +1,77 @@
+---
+title: Table Structure
+description: Browse and modify columns, indexes, and foreign keys
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The Table Structure view lets you inspect and modify a table's schema without writing DDL by hand. Browse columns, indexes, and foreign keys, then use the visual Structure Designer to make changes and preview the generated SQL before applying it.
+
+## Browsing Structure
+
+Select any table in the sidebar and click the **Structure** tab (next to Data). You'll see three sections:
+
+**Columns** — a list of every column with:
+- Name
+- Data type
+- Nullable (yes/no)
+- Default value
+- Primary key indicator
+
+**Indexes** — all indexes on the table, including the primary key index, unique constraints, and any custom indexes you've created.
+
+**Foreign keys** — relationships to other tables, showing the local column, the referenced table, and the referenced column.
+
+This view is read-only. To make changes, open the Structure Designer.
+
+## Structure Designer
+
+Click **Edit Structure** to open the visual designer. It loads the current columns and lets you modify them with a form-based interface — no SQL required.
+
+**What you can do:**
+
+- **Add a column** — click "Add column" to append a new row. Set the name, type, default value, and whether it's nullable or unique.
+- **Rename a column** — edit the name field directly. SoftDB generates the appropriate `ALTER TABLE ... RENAME COLUMN` statement.
+- **Change a type** — update the type field. SoftDB warns you if the type change might cause data loss.
+- **Set defaults and nullability** — toggle the NOT NULL checkbox and enter a default expression.
+- **Drop a column** — click the delete icon on any row. Dropped columns are highlighted in red until you apply.
+- **Reorder columns** — drag rows to reorder them. The order is reflected in the generated DDL for new tables.
+
+## Preview and Apply
+
+Before any changes hit the database, you review the generated DDL.
+
+<Steps>
+1. Make your changes in the designer.
+
+2. Click **Preview** to generate the SQL. SoftDB shows the exact statements it will run — `ALTER TABLE`, `ADD COLUMN`, `DROP COLUMN`, etc.
+
+3. Review the SQL. If something looks wrong, go back and adjust.
+
+4. Click **Apply** to execute. SoftDB runs the statements and refreshes the schema.
+</Steps>
+
+<Aside type="caution">
+Dropping a column is irreversible. SoftDB highlights destructive operations in the preview panel so you can catch them before applying.
+</Aside>
+
+## Database Limitations
+
+Not every database supports every schema operation. The designer adapts to what your database can do.
+
+| Feature | PostgreSQL | MySQL | SQLite | Redshift |
+|---------|-----------|-------|--------|----------|
+| Add column | Yes | Yes | Yes (limited) | Yes |
+| Rename column | Yes | Yes | Yes | Yes |
+| Change type | Yes | Yes | No | No |
+| Drop column | Yes | Yes | Yes | Yes |
+
+SQLite has the most restrictions. It doesn't support `ALTER TABLE ... MODIFY COLUMN`, so type changes aren't available. Adding columns works but only at the end of the table.
+
+Redshift doesn't support changing column types after creation. You'd need to create a new column, copy data, and drop the old one — a workflow better handled manually for now.
+
+## MongoDB
+
+For MongoDB connections, the Structure Designer is replaced by a **JSON Schema Validation editor**. This lets you define a JSON Schema that MongoDB uses to validate documents on insert and update.
+
+The editor provides a full JSON editor with syntax highlighting and validation. Changes are applied via `collMod` with the `validator` option.
