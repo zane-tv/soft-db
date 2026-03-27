@@ -80,6 +80,17 @@ func jsonText(v any) *mcp.CallToolResult {
 	return toolText(string(b))
 }
 
+func parseArgs[T any](req *mcp.CallToolRequest) (T, error) {
+	var input T
+	if req.Params == nil || len(req.Params.Arguments) == 0 {
+		return input, nil
+	}
+	if err := json.Unmarshal(req.Params.Arguments, &input); err != nil {
+		return input, fmt.Errorf("invalid arguments: %w", err)
+	}
+	return input, nil
+}
+
 func (h *MCPHandlers) handleListConnections(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	conns, err := h.connService.ListConnections()
 	if err != nil {
@@ -101,7 +112,11 @@ func (h *MCPHandlers) handleListConnections(ctx context.Context, req *mcp.CallTo
 	return jsonText(mcpConns), nil
 }
 
-func (h *MCPHandlers) handleUseConnection(ctx context.Context, req *mcp.CallToolRequest, input UseConnectionInput) (*mcp.CallToolResult, error) {
+func (h *MCPHandlers) handleUseConnection(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	input, err := parseArgs[UseConnectionInput](req)
+	if err != nil {
+		return toolError(err.Error()), nil
+	}
 	if input.ConnectionID == "" {
 		return toolError("connection_id is required"), nil
 	}
@@ -174,14 +189,18 @@ func (h *MCPHandlers) handleListDatabases(ctx context.Context, req *mcp.CallTool
 	}), nil
 }
 
-func (h *MCPHandlers) handleListTables(ctx context.Context, req *mcp.CallToolRequest, input ListTablesInput) (*mcp.CallToolResult, error) {
+func (h *MCPHandlers) handleListTables(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	id := h.activeID()
 	if id == "" {
 		return noActiveConnectionResult(), nil
 	}
 
+	input, err := parseArgs[ListTablesInput](req)
+	if err != nil {
+		return toolError(err.Error()), nil
+	}
+
 	var tables []driver.TableInfo
-	var err error
 
 	if input.Database != "" {
 		tables, err = h.schemaService.GetTablesForDB(id, input.Database)
@@ -206,17 +225,21 @@ func (h *MCPHandlers) handleListTables(ctx context.Context, req *mcp.CallToolReq
 	}), nil
 }
 
-func (h *MCPHandlers) handleDescribeTable(ctx context.Context, req *mcp.CallToolRequest, input DescribeTableInput) (*mcp.CallToolResult, error) {
+func (h *MCPHandlers) handleDescribeTable(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	id := h.activeID()
 	if id == "" {
 		return noActiveConnectionResult(), nil
+	}
+
+	input, err := parseArgs[DescribeTableInput](req)
+	if err != nil {
+		return toolError(err.Error()), nil
 	}
 	if input.Table == "" {
 		return toolError("table is required"), nil
 	}
 
 	var cols []driver.ColumnInfo
-	var err error
 
 	if input.Database != "" {
 		cols, err = h.schemaService.GetColumnsForDB(id, input.Database, input.Table)
@@ -242,10 +265,15 @@ func (h *MCPHandlers) handleDescribeTable(ctx context.Context, req *mcp.CallTool
 	}), nil
 }
 
-func (h *MCPHandlers) handleExecuteQuery(ctx context.Context, req *mcp.CallToolRequest, input ExecuteQueryInput) (*mcp.CallToolResult, error) {
+func (h *MCPHandlers) handleExecuteQuery(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	id := h.activeID()
 	if id == "" {
 		return noActiveConnectionResult(), nil
+	}
+
+	input, err := parseArgs[ExecuteQueryInput](req)
+	if err != nil {
+		return toolError(err.Error()), nil
 	}
 	if input.Query == "" {
 		return toolError("query is required"), nil
@@ -309,10 +337,15 @@ func (h *MCPHandlers) handleExecuteQuery(ctx context.Context, req *mcp.CallToolR
 	return jsonText(response), nil
 }
 
-func (h *MCPHandlers) handleReadTable(ctx context.Context, req *mcp.CallToolRequest, input ReadTableInput) (*mcp.CallToolResult, error) {
+func (h *MCPHandlers) handleReadTable(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	id := h.activeID()
 	if id == "" {
 		return noActiveConnectionResult(), nil
+	}
+
+	input, err := parseArgs[ReadTableInput](req)
+	if err != nil {
+		return toolError(err.Error()), nil
 	}
 	if input.Table == "" {
 		return toolError("table is required"), nil
@@ -347,10 +380,15 @@ func (h *MCPHandlers) handleReadTable(ctx context.Context, req *mcp.CallToolRequ
 	}), nil
 }
 
-func (h *MCPHandlers) handleGetRelationships(ctx context.Context, req *mcp.CallToolRequest, input GetRelationshipsInput) (*mcp.CallToolResult, error) {
+func (h *MCPHandlers) handleGetRelationships(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	id := h.activeID()
 	if id == "" {
 		return noActiveConnectionResult(), nil
+	}
+
+	input, err := parseArgs[GetRelationshipsInput](req)
+	if err != nil {
+		return toolError(err.Error()), nil
 	}
 
 	conns, err := h.connService.ListConnections()

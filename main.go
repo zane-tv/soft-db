@@ -40,6 +40,7 @@ func main() {
 	updateService := services.NewUpdateService(Version)
 	exportService := services.NewExportService(appStore, connService, settingsService)
 	importService := services.NewImportService(appStore, connService, settingsService)
+	mcpService := services.NewMCPService(connService, queryService, schemaService, settingsService, appStore)
 
 	// Create Wails app
 	app := application.New(application.Options{
@@ -57,6 +58,7 @@ func main() {
 			application.NewService(updateService),
 			application.NewService(exportService),
 			application.NewService(importService),
+			application.NewService(mcpService),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -75,6 +77,7 @@ func main() {
 	updateService.SetApp(app)
 	exportService.SetApp(app)
 	importService.SetApp(app)
+	mcpService.SetApp(app)
 
 	// Create main window
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
