@@ -60,6 +60,7 @@ const DB_CARD_COLORS: Record<string, { bg: string; accent: string; icon: string;
   sqlite: { bg: 'bg-[#44A8E0]/10', accent: '#44A8E0', icon: 'storage', label: 'SQLite' },
   mongodb: { bg: 'bg-[#00684A]/10', accent: '#00ED64', icon: 'data_object', label: 'MongoDB' },
   redshift: { bg: 'bg-[#8C4FFF]/10', accent: '#8C4FFF', icon: 'cloud', label: 'Redshift' },
+  redis: { bg: 'bg-[#DC382D]/10', accent: '#DC382D', icon: 'memory', label: 'Redis' },
 }
 
 const DB_CHIP_LIST = Object.entries(DB_CARD_COLORS).map(([value, meta]) => ({
