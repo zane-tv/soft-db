@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import DOMPurify from 'dompurify'
+import { useState, useEffect, useRef } from 'react'
 import { useUpdate } from '@/hooks/useUpdate'
 import { useTranslation, Language } from '@/lib/i18n'
 
@@ -6,6 +7,27 @@ interface ChangelogModalProps {
   open: boolean
   onClose: () => void
   lang: Language
+}
+
+const MARKDOWN_SANITIZE_OPTIONS = {
+  FORBID_ATTR: ['onerror', 'onload'],
+  FORBID_TAGS: ['script', 'iframe'],
+}
+
+function sanitizeMarkdownHtml(html: string): string {
+  return DOMPurify.sanitize(html, MARKDOWN_SANITIZE_OPTIONS)
+}
+
+function SanitizedHtml({ className, html }: { className: string; html: string }) {
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.innerHTML = sanitizeMarkdownHtml(html)
+    }
+  }, [html])
+
+  return <div ref={contentRef} className={className} />
 }
 
 export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
@@ -18,14 +40,14 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
     if (open) {
       resetDownload()
     }
-  }, [open])
+  }, [open, resetDownload])
 
   // Fetch changelog when switching to history tab
   useEffect(() => {
     if (open && tab === 'history') {
       changelog.refetch()
     }
-  }, [open, tab])
+  }, [changelog, open, tab])
 
   if (!open) return null
 
@@ -36,11 +58,15 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-fade-in" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label={t('update.close')}
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-fade-in"
+        onClick={onClose}
+      />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div
-          className="glass-panel w-full max-w-lg max-h-[80vh] rounded-xl border border-border-subtle flex flex-col animate-fade-in overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
+          className="glass-panel pointer-events-auto w-full max-w-lg max-h-[80vh] rounded-xl border border-border-subtle flex flex-col animate-fade-in overflow-hidden"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle shrink-0">
@@ -54,6 +80,7 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
               </div>
             </div>
             <button
+              type="button"
               onClick={onClose}
               className="flex items-center justify-center size-8 rounded-lg text-text-muted hover:text-text-main hover:bg-white/5 transition-all"
             >
@@ -64,6 +91,7 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
           {/* Tabs */}
           <div className="flex border-b border-border-subtle shrink-0">
             <button
+              type="button"
               onClick={() => setTab('latest')}
               className={`flex-1 py-2.5 text-xs font-medium transition-all ${
                 tab === 'latest'
@@ -74,6 +102,7 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
               {hasUpdate ? t('update.newVersion') : t('update.latest')}
             </button>
             <button
+              type="button"
               onClick={() => setTab('history')}
               className={`flex-1 py-2.5 text-xs font-medium transition-all ${
                 tab === 'history'
@@ -118,9 +147,9 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
                     {t('update.releaseNotes')} — {updateInfo?.latestVersion ?? latestVersion}
                   </h3>
                   {notes ? (
-                    <div
+                    <SanitizedHtml
                       className="changelog-md rounded-lg bg-bg-app/50 p-4 border border-border-subtle"
-                      dangerouslySetInnerHTML={{ __html: mdToHtml(notes) }}
+                      html={mdToHtml(notes)}
                     />
                   ) : (
                     <div className="rounded-lg bg-bg-app/50 p-4 border border-border-subtle text-sm text-text-muted italic">
@@ -168,8 +197,8 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
                     {t('update.loadingChangelog')}
                   </div>
                 ) : changelog.data?.length ? (
-                  changelog.data.map((release, i) => (
-                    <div key={i} className="space-y-1.5">
+                  changelog.data.map((release) => (
+                    <div key={`${release.latestVersion}-${release.publishedAt}`} className="space-y-1.5">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-text-main">{release.latestVersion}</span>
                         {release.latestVersion === version && (
@@ -179,9 +208,9 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
                         )}
                         <span className="text-xs text-text-muted ml-auto">{formatDate(release.publishedAt)}</span>
                       </div>
-                      <div
+                      <SanitizedHtml
                         className="changelog-md text-xs pl-2 border-l-2 border-border-subtle"
-                        dangerouslySetInnerHTML={{ __html: mdToHtml(release.releaseNotes) }}
+                        html={mdToHtml(release.releaseNotes)}
                       />
                     </div>
                   ))
@@ -196,6 +225,7 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
           <div className="flex items-center justify-between px-5 py-3 border-t border-border-subtle shrink-0 bg-bg-card/50">
             {updateInfo?.htmlUrl && (
               <button
+                type="button"
                 onClick={() => openReleasePage(updateInfo.htmlUrl)}
                 className="text-xs text-text-muted hover:text-primary transition-colors flex items-center gap-1"
               >
@@ -206,6 +236,7 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
             <div className="flex items-center gap-2 ml-auto">
               {hasUpdate && !isDownloading && !isReady && (
                 <button
+                  type="button"
                   onClick={startDownload}
                   className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg text-xs font-medium transition-all"
                 >
@@ -214,6 +245,7 @@ export function ChangelogModal({ open, onClose, lang }: ChangelogModalProps) {
                 </button>
               )}
               <button
+                type="button"
                 onClick={onClose}
                 className="px-4 py-2 rounded-lg text-xs font-medium text-text-muted hover:text-text-main hover:bg-white/5 transition-all"
               >
@@ -296,7 +328,7 @@ function mdToHtml(md: string): string {
   }
 
   if (inList) out.push('</ul>')
-  return out.join('\n')
+  return sanitizeMarkdownHtml(out.join('\n'))
 }
 
 /** Format inline markdown: bold, italic, code, links */

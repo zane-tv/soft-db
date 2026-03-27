@@ -4,7 +4,9 @@
 @theme {
   /* Background */
   --color-bg-app: #18181B;
+  --color-bg-main: #18181B;
   --color-bg-card: #27272A;
+  --color-bg-elevated: #27272A;
   --color-bg-hover: #3F3F46;
   --color-bg-editor: #121215;
 
@@ -21,6 +23,7 @@
   /* Text */
   --color-text-main: #F4F4F5;
   --color-text-muted: #A1A1AA;
+  --color-text-secondary: #A1A1AA;
 
   /* Border */
   --color-border-subtle: #3F3F46;
@@ -156,7 +159,9 @@ input[type=number]::-webkit-outer-spin-button {
 /* Light Theme */
 html[data-theme="light"] {
   --color-bg-app: #F1F5F9;
+  --color-bg-main: #F1F5F9;
   --color-bg-card: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
   --color-bg-hover: #E2E8F0;
   --color-bg-editor: #F8FAFC;
   --color-primary: #3c83f6;
@@ -167,6 +172,7 @@ html[data-theme="light"] {
   --color-error: #EF4444;
   --color-text-main: #1E293B;
   --color-text-muted: #64748B;
+  --color-text-secondary: #64748B;
   --color-border-subtle: #E2E8F0;
   --color-syntax-keyword: #7C3AED;
   --color-syntax-string: #059669;
@@ -189,7 +195,9 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
 /* Nord Theme */
 html[data-theme="nord"] {
   --color-bg-app: #2E3440;
+  --color-bg-main: #2E3440;
   --color-bg-card: #3B4252;
+  --color-bg-elevated: #3B4252;
   --color-bg-hover: #434C5E;
   --color-bg-editor: #272C36;
   --color-primary: #88C0D0;
@@ -200,6 +208,7 @@ html[data-theme="nord"] {
   --color-error: #BF616A;
   --color-text-main: #ECEFF4;
   --color-text-muted: #D8DEE9;
+  --color-text-secondary: #D8DEE9;
   --color-border-subtle: #4C566A;
   --color-syntax-keyword: #B48EAD;
   --color-syntax-string: #A3BE8C;
@@ -222,7 +231,9 @@ html[data-theme="nord"] ::-webkit-scrollbar-thumb:hover {
 /* Dracula Theme */
 html[data-theme="dracula"] {
   --color-bg-app: #282A36;
+  --color-bg-main: #282A36;
   --color-bg-card: #44475A;
+  --color-bg-elevated: #44475A;
   --color-bg-hover: #6272A4;
   --color-bg-editor: #21222C;
   --color-primary: #BD93F9;
@@ -233,6 +244,7 @@ html[data-theme="dracula"] {
   --color-error: #FF5555;
   --color-text-main: #F8F8F2;
   --color-text-muted: #BFBFBF;
+  --color-text-secondary: #BFBFBF;
   --color-border-subtle: #6272A4;
   --color-syntax-keyword: #FF79C6;
   --color-syntax-string: #50FA7B;
@@ -406,9 +418,9 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #22c55e;
+  background: var(--color-success);
   flex-shrink: 0;
-  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 40%, transparent);
 }
 .ai-account-email {
   font-size: 11px;
@@ -434,7 +446,7 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
 }
 .ai-logout-btn:hover {
   color: var(--color-error);
-  background: rgba(239, 68, 68, 0.08);
+  background: color-mix(in srgb, var(--color-error) 8%, transparent);
 }
 
 .ai-chat-body {
@@ -518,14 +530,14 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   font-size: 12px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e5a0ff;
+  background: color-mix(in srgb, var(--color-text-main) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 80%, transparent);
+  color: var(--color-syntax-keyword);
 }
 .ai-message-user .ai-inline-code {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: color-mix(in srgb, var(--color-text-main) 15%, transparent);
+  border-color: color-mix(in srgb, var(--color-text-main) 20%, transparent);
+  color: var(--color-text-main);
 }
 .ai-list-item {
   display: block;
@@ -559,15 +571,15 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--color-border-subtle);
-  background: #1a1a2e;
+  background: var(--color-bg-editor);
 }
 .ai-code-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--color-text-main) 4%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
 }
 .ai-code-lang {
   font-size: 10px;
@@ -593,7 +605,7 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   white-space: nowrap;
 }
 .ai-code-action-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--color-text-main) 8%, transparent);
   color: var(--color-text-main);
 }
 .ai-code-content {
@@ -602,7 +614,7 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   font-family: var(--font-mono, 'JetBrains Mono', 'Fira Code', monospace);
   font-size: 12px;
   line-height: 1.5;
-  color: #e0e0e0;
+  color: var(--color-text-main);
   overflow-x: auto;
   background: none;
 }
@@ -710,12 +722,12 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   padding: 8px 12px;
   margin: 8px 12px 0;
   border-radius: 8px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 20%, transparent);
   flex-shrink: 0;
 }
-.ai-error-quota { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); }
-.ai-error-rate { background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.2); }
+.ai-error-quota { background: color-mix(in srgb, var(--color-warning) 10%, transparent); border-color: color-mix(in srgb, var(--color-warning) 20%, transparent); }
+.ai-error-rate { background: color-mix(in srgb, var(--color-primary) 10%, transparent); border-color: color-mix(in srgb, var(--color-primary) 20%, transparent); }
 .ai-error-content { display: flex; align-items: center; gap: 6px; flex: 1; }
 .ai-error-icon { font-size: 14px; }
 .ai-error-text { font-size: 12px; color: var(--color-text-main); }
@@ -836,7 +848,7 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
 .changelog-md code {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 0.75rem;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--color-text-main) 6%, transparent);
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }
@@ -857,14 +869,14 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
 .changelog-md th,
 .changelog-md td {
   padding: 0.35rem 0.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--color-border-subtle) 80%, transparent);
   text-align: left;
 }
 .changelog-md th {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--color-text-main) 4%, transparent);
   color: var(--color-text-main);
   font-weight: 600;
 }
 .changelog-md tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: color-mix(in srgb, var(--color-text-main) 2%, transparent);
 }

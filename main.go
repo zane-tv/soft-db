@@ -33,9 +33,10 @@ func main() {
 	connService := services.NewConnectionService(appStore, settingsService)
 	queryService := services.NewQueryService(connService, settingsService, appStore)
 	schemaService := services.NewSchemaService(connService)
+	compareService := services.NewCompareService(connService)
 	editService := services.NewEditService(connService, queryService, settingsService, appStore)
 	oauthService := services.NewOAuthService(appStore)
-	aiService := services.NewAIService(oauthService, schemaService, connService, appStore)
+	aiService := services.NewAIService(oauthService, schemaService, connService, settingsService, appStore)
 	updateService := services.NewUpdateService(Version)
 	exportService := services.NewExportService(appStore, connService, settingsService)
 	importService := services.NewImportService(appStore, connService, settingsService)
@@ -48,6 +49,7 @@ func main() {
 			application.NewService(connService),
 			application.NewService(queryService),
 			application.NewService(schemaService),
+			application.NewService(compareService),
 			application.NewService(settingsService),
 			application.NewService(editService),
 			application.NewService(oauthService),

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Dialogs } from '@wailsio/runtime'
 import * as ImportService from '../../bindings/soft-db/services/importservice'
 import { useImportProgress } from '@/hooks/useExportImport'
 import { connectionKeys } from '@/hooks/useConnections'
+import { multiDbKeys, schemaKeys } from '@/hooks/useSchema'
 import { settingsKeys, useSettings } from '@/hooks/useSettings'
 import { useTranslation } from '@/lib/i18n'
 import { ConflictStrategy } from '@/lib/export-types'
@@ -53,6 +55,7 @@ function getFileName(filePath: string): string {
 
 export function ImportModal({ open, onClose, mode, connectionId, databaseName }: ImportModalProps) {
   const overlayRef = useRef<HTMLButtonElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
   const { data: settings } = useSettings()
   const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
@@ -151,6 +154,11 @@ export function ImportModal({ open, onClose, mode, connectionId, databaseName }:
       })
     },
     onSuccess: () => {
+      if (connectionId) {
+        qc.invalidateQueries({ queryKey: schemaKeys.all(connectionId) })
+        qc.invalidateQueries({ queryKey: multiDbKeys.databases(connectionId) })
+        qc.invalidateQueries({ queryKey: ['multidb', connectionId] })
+      }
       setStep('complete')
     },
     onError: (err) => {
@@ -181,6 +189,12 @@ export function ImportModal({ open, onClose, mode, connectionId, databaseName }:
   const isImporting = workspaceMutation.isPending || databaseMutation.isPending || isImportActive
   const canImport = !!selectedFile && (mode === 'database' ? !!connectionId : true)
 
+  const handleFocusTrapClose = useCallback(() => {
+    if (!isImporting) handleClose()
+  }, [isImporting, handleClose])
+
+  useFocusTrap(modalRef, open, handleFocusTrapClose)
+
   if (!open) return null
 
   return (
@@ -189,7 +203,6 @@ export function ImportModal({ open, onClose, mode, connectionId, databaseName }:
       role="dialog"
       aria-modal="true"
       aria-labelledby="import-modal-title"
-      onKeyDown={(e: ReactKeyboardEvent) => { if (e.key === 'Escape' && !isImporting) handleClose() }}
     >
       {/* Backdrop */}
       <button
@@ -204,6 +217,7 @@ export function ImportModal({ open, onClose, mode, connectionId, databaseName }:
 
       {/* Modal */}
       <div
+        ref={modalRef}
         className="relative w-full max-w-[520px] max-h-[90vh] bg-bg-card rounded-2xl border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up"
         style={{ animationDuration: '0.3s' }}
       >

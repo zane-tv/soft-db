@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { ConnectionConfig, DatabaseType } from '../../../bindings/soft-db/internal/driver/models'
 import { useSaveConnection, useTestConnection } from '@/hooks/useConnections'
 import { useSettings } from '@/hooks/useSettings'
 import { useTranslation } from '@/lib/i18n'
@@ -35,7 +36,7 @@ const DEFAULT_PORTS: Record<string, number> = {
 export function ConnectionModal({ open, onClose, editConnection }: ConnectionModalProps) {
   const saveMutation = useSaveConnection()
   const testMutation = useTestConnection()
-  const overlayRef = useRef<HTMLDivElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
   const { data: settingsData } = useSettings()
   const { t } = useTranslation((settingsData?.language as 'en' | 'vi') ?? 'en')
 
@@ -50,9 +51,18 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
     filePath: '',
     sslMode: '',
     uri: '',
+    sshEnabled: false,
+    sshHost: '',
+    sshPort: '22',
+    sshUser: '',
+    sshPassword: '',
+    sshKeyPath: '',
+    sshAuthType: 'password' as 'password' | 'key',
+    safeMode: false,
   })
   const [useURI, setUseURI] = useState(false)
   const [isAutoNamed, setIsAutoNamed] = useState(true)
+  const [sshExpanded, setSshExpanded] = useState(false)
 
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
   const [testError, setTestError] = useState('')
@@ -60,20 +70,33 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
   // Populate form when editing
   useEffect(() => {
     if (editConnection) {
+      const ec = editConnection as ConnectionConfig & {
+        sshEnabled?: boolean; sshHost?: string; sshPort?: number;
+        sshUser?: string; sshPassword?: string; sshKeyPath?: string;
+      }
       setForm({
-        name: editConnection.name,
-        type: editConnection.type,
-        host: editConnection.host,
-        port: String(editConnection.port),
-        database: editConnection.database,
-        username: editConnection.username,
-        password: editConnection.password,
-        filePath: editConnection.filePath || '',
-        sslMode: editConnection.sslMode || '',
-        uri: editConnection.uri || '',
+        name: ec.name,
+        type: ec.type,
+        host: ec.host,
+        port: String(ec.port),
+        database: ec.database,
+        username: ec.username,
+        password: ec.password,
+        filePath: ec.filePath || '',
+        sslMode: ec.sslMode || '',
+        uri: ec.uri || '',
+        sshEnabled: ec.sshEnabled || false,
+        sshHost: ec.sshHost || '',
+        sshPort: String(ec.sshPort || 22),
+        sshUser: ec.sshUser || '',
+        sshPassword: ec.sshPassword || '',
+        sshKeyPath: ec.sshKeyPath || '',
+        sshAuthType: ec.sshKeyPath ? 'key' : 'password',
+        safeMode: !!(ec as ConnectionConfig & { safeMode?: boolean }).safeMode,
       })
       setUseURI(!!editConnection.uri)
       setIsAutoNamed(false)
+      setSshExpanded(!!(ec.sshEnabled))
     } else {
       setForm({
         name: '',
@@ -86,13 +109,22 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         filePath: '',
         sslMode: '',
         uri: '',
+        sshEnabled: false,
+        sshHost: '',
+        sshPort: '22',
+        sshUser: '',
+        sshPassword: '',
+        sshKeyPath: '',
+        sshAuthType: 'password',
+        safeMode: false,
       })
       setUseURI(false)
       setIsAutoNamed(true)
+      setSshExpanded(false)
     }
     setTestResult('idle')
     setTestError('')
-  }, [editConnection, open])
+  }, [editConnection])
 
   // Auto-generate connection name from type/host/port
   useEffect(() => {
@@ -142,7 +174,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
 
   const buildConfig = useCallback((): ConnectionConfig => {
     const isURIMode = useURI && form.type === DatabaseType.MongoDB
-    return new ConnectionConfig({
+    const config: Record<string, unknown> = {
       id: editConnection?.id || '',
       name: form.name,
       type: form.type,
@@ -155,7 +187,19 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
       uri: isURIMode ? form.uri : undefined,
       sslMode: form.sslMode || undefined,
       status: 'offline',
-    })
+    }
+    if (form.sshEnabled && form.type !== DatabaseType.SQLite) {
+      config.sshEnabled = true
+      config.sshHost = form.sshHost
+      config.sshPort = parseInt(form.sshPort, 10) || 22
+      config.sshUser = form.sshUser
+      config.sshPassword = form.sshAuthType === 'password' ? form.sshPassword : ''
+      config.sshKeyPath = form.sshAuthType === 'key' ? form.sshKeyPath : ''
+    }
+    if (form.safeMode) {
+      config.safeMode = true
+    }
+    return new ConnectionConfig(config as Partial<ConnectionConfig>)
   }, [form, editConnection, useURI])
 
   const handleTest = useCallback(async () => {
@@ -200,6 +244,8 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
     : form.host.trim()
   )
 
+  useFocusTrap(modalRef, open, onClose)
+
   if (!open) return null
 
   return (
@@ -208,18 +254,18 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
       role="dialog"
       aria-modal="true"
       aria-labelledby="connection-modal-title"
-      onKeyDown={(e: ReactKeyboardEvent) => { if (e.key === 'Escape') onClose() }}
     >
       {/* Backdrop */}
-      <div
-        ref={overlayRef}
+      <button
+        type="button"
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
         style={{ animationDuration: '0.2s' }}
+        aria-label="Close connection modal"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-[560px] max-h-[90vh] bg-bg-card rounded-2xl border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up"
+      <div ref={modalRef} className="relative w-full max-w-[560px] max-h-[90vh] bg-bg-card rounded-2xl border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up"
         style={{ animationDuration: '0.3s' }}
       >
         {/* Header */}
@@ -231,6 +277,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
             <p className="text-sm text-text-muted mt-0.5">{t('modal.configureDesc')}</p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close dialog"
             className="text-text-muted hover:text-text-main p-1.5 rounded-lg hover:bg-white/5 transition-colors duration-200"
@@ -263,12 +310,13 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
 
           {/* Database Type */}
           <div>
-            <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+            <div className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
               {t('modal.databaseType')}
-            </label>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {DB_TYPES.map((db) => (
                 <button
+                  type="button"
                   key={db.value}
                   onClick={() => handleTypeChange(db.value)}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 ${
@@ -455,7 +503,175 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
             </>
           )}
 
-          {/* Test Result */}
+          {/* SSH Tunnel Section — hidden for SQLite */}
+          {!isSQLite && (
+            <div className="border border-border-subtle/60 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setSshExpanded(!sshExpanded)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-text-muted hover:text-text-main hover:bg-bg-hover/30 transition-all duration-200"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[18px]">vpn_lock</span>
+                  <span>SSH Tunnel</span>
+                  {form.sshEnabled && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold">ON</span>
+                  )}
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${sshExpanded ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+
+              {sshExpanded && (
+                <div className="px-4 pb-4 space-y-4 border-t border-border-subtle/40">
+                  {/* Enable Toggle */}
+                  <label className="flex items-center gap-3 pt-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.sshEnabled}
+                      onChange={(e) => updateField('sshEnabled', e.target.checked)}
+                      className="w-4 h-4 rounded border-border-subtle bg-bg-app text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
+                    />
+                    <span className="text-sm text-text-main">Enable SSH Tunnel</span>
+                  </label>
+
+                  {form.sshEnabled && (
+                    <>
+                      {/* SSH Host + Port */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="col-span-2">
+                          <label htmlFor="ssh-host" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                            SSH Host
+                          </label>
+                          <input
+                            id="ssh-host"
+                            value={form.sshHost}
+                            onChange={(e) => updateField('sshHost', e.target.value)}
+                            className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
+                            placeholder="bastion.example.com"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="ssh-port" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                            SSH Port
+                          </label>
+                          <input
+                            id="ssh-port"
+                            value={form.sshPort}
+                            onChange={(e) => updateField('sshPort', e.target.value)}
+                            type="number"
+                            className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main focus:ring-2 focus:ring-primary outline-none transition-all duration-200 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* SSH Username */}
+                      <div>
+                        <label htmlFor="ssh-user" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                          SSH Username
+                        </label>
+                        <input
+                          id="ssh-user"
+                          value={form.sshUser}
+                          onChange={(e) => updateField('sshUser', e.target.value)}
+                          className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
+                          placeholder="ubuntu"
+                        />
+                      </div>
+
+                      {/* Auth Type Toggle */}
+                      <div className="flex items-center gap-3 p-2.5 rounded-lg bg-bg-hover/20 border border-border-subtle/30">
+                        <button
+                          type="button"
+                          onClick={() => updateField('sshAuthType', 'password')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                            form.sshAuthType === 'password'
+                              ? 'bg-primary text-white shadow-sm'
+                              : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[14px]">password</span>
+                          Password
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateField('sshAuthType', 'key')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                            form.sshAuthType === 'key'
+                              ? 'bg-primary text-white shadow-sm'
+                              : 'text-text-muted hover:text-text-main hover:bg-bg-hover/50'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[14px]">key</span>
+                          Private Key
+                        </button>
+                      </div>
+
+                      {/* Password or Key Path */}
+                      {form.sshAuthType === 'password' ? (
+                        <div>
+                          <label htmlFor="ssh-password" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                            SSH Password
+                          </label>
+                          <input
+                            id="ssh-password"
+                            value={form.sshPassword}
+                            onChange={(e) => updateField('sshPassword', e.target.value)}
+                            type="password"
+                            className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
+                            placeholder="••••••••"
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label htmlFor="ssh-keypath" className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                            Private Key Path
+                          </label>
+                          <input
+                            id="ssh-keypath"
+                            value={form.sshKeyPath}
+                            onChange={(e) => updateField('sshKeyPath', e.target.value)}
+                            className="w-full bg-bg-app border border-border-subtle rounded-lg px-3 py-2.5 text-sm font-mono text-text-main placeholder:text-text-muted/50 focus:ring-2 focus:ring-primary outline-none transition-all duration-200"
+                            placeholder="~/.ssh/id_rsa"
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between px-4 py-3 border border-border-subtle/60 rounded-lg">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px] text-amber-400">shield</span>
+              <div>
+                <span className="text-sm text-text-main font-medium">Safe Mode</span>
+                <p className="text-[11px] text-text-muted leading-tight mt-0.5">
+                  Require confirmation for destructive queries (DELETE, DROP, TRUNCATE, UPDATE without WHERE)
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm(prev => ({ ...prev, safeMode: !prev.safeMode }))}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                form.safeMode ? 'bg-amber-500' : 'bg-bg-hover'
+              }`}
+              role="switch"
+              aria-checked={form.safeMode}
+              aria-label="Toggle safe mode"
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  form.safeMode ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
           {testResult !== 'idle' && (
             <div
               className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm animate-fade-in ${
@@ -463,7 +679,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
                   ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400'
                   : testResult === 'success'
                     ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                    : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                    : 'bg-error/10 border border-red-500/20 text-error'
               }`}
             >
               <span className="material-symbols-outlined text-[18px]">
@@ -483,6 +699,7 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
         {/* Footer */}
         <div className="px-6 py-4 border-t border-border-subtle flex items-center justify-between shrink-0 bg-bg-card">
           <button
+            type="button"
             onClick={handleTest}
             disabled={!canSave || testResult === 'testing'}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text-main hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
@@ -494,12 +711,14 @@ export function ConnectionModal({ open, onClose, editConnection }: ConnectionMod
           </button>
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-text-muted hover:text-text-main transition-colors duration-200"
             >
               {t('modal.cancel')}
             </button>
             <button
+              type="button"
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
               className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary-hover text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.97]"

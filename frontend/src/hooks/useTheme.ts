@@ -49,6 +49,7 @@ const STORAGE_KEY = 'softdb-theme'
 
 function applyTheme(theme: ThemeId) {
   document.documentElement.setAttribute('data-theme', theme)
+  document.documentElement.style.colorScheme = theme === 'light' ? 'light' : 'dark'
 
   // Sync Wails native window background with theme
   try {

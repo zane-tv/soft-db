@@ -46,25 +46,31 @@ export function AppBar() {
       {/* Right: Window Controls */}
       <div className="flex items-center gap-0.5">
         <button
+          type="button"
           onClick={handleMinimize}
           className="app-bar-btn size-8 rounded-md flex items-center justify-center text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
           title="Minimize"
+          aria-label="Minimize window"
         >
           <span className="material-symbols-outlined text-[18px]">horizontal_rule</span>
         </button>
         <button
+          type="button"
           onClick={handleMaximize}
           className="app-bar-btn size-8 rounded-md flex items-center justify-center text-text-muted hover:text-text-main hover:bg-bg-hover transition-colors"
           title={isMaximized ? 'Restore' : 'Maximize'}
+          aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
         >
           <span className="material-symbols-outlined text-[18px]">
             {isMaximized ? 'fullscreen_exit' : 'fullscreen'}
           </span>
         </button>
         <button
+          type="button"
           onClick={handleClose}
           className="app-bar-btn size-8 rounded-md flex items-center justify-center text-text-muted hover:text-white hover:bg-red-500 transition-colors"
           title="Close"
+          aria-label="Close window"
         >
           <span className="material-symbols-outlined text-[18px]">close</span>
         </button>

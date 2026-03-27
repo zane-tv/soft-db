@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -29,11 +30,20 @@ type ConnectionConfig struct {
 	Database string       `json:"database"`
 	Username string       `json:"username"`
 	Password string       `json:"password"`
-	FilePath string       `json:"filePath,omitempty"` // For SQLite
-	URI      string       `json:"uri,omitempty"`      // Direct connection string (MongoDB)
+	FilePath string       `json:"filePath,omitempty"`
+	URI      string       `json:"uri,omitempty"`
 	SSLMode  string       `json:"sslMode,omitempty"`
-	Status   string       `json:"status"` // connected, idle, offline
+	Status   string       `json:"status"`
 	LastUsed string       `json:"lastUsed,omitempty"`
+
+	SSHEnabled  bool   `json:"sshEnabled,omitempty"`
+	SSHHost     string `json:"sshHost,omitempty"`
+	SSHPort     int    `json:"sshPort,omitempty"`
+	SSHUser     string `json:"sshUser,omitempty"`
+	SSHPassword string `json:"sshPassword,omitempty"`
+	SSHKeyPath  string `json:"sshKeyPath,omitempty"`
+
+	SafeMode bool `json:"safeMode,omitempty"`
 }
 
 // QueryResult is returned from query execution
@@ -187,6 +197,56 @@ func NewDriver(dbType DatabaseType) (Driver, error) {
 // measureTime returns elapsed milliseconds since start
 func measureTime(start time.Time) float64 {
 	return float64(time.Since(start).Microseconds()) / 1000.0
+}
+
+// TransactionalDriver is an optional interface for SQL drivers that support
+// explicit transaction management. PostgreSQL, MySQL/MariaDB, and SQLite all
+// implement this interface; MongoDB does not.
+// Use type assertion drv.(TransactionalDriver) to check capability.
+type TransactionalDriver interface {
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
+
+// IndexInfo describes a database index
+type IndexInfo struct {
+	Name      string   `json:"name"`
+	TableName string   `json:"tableName"`
+	Columns   []string `json:"columns"`
+	IsUnique  bool     `json:"isUnique"`
+	IsPrimary bool     `json:"isPrimary"`
+}
+
+// ForeignKeyInfo describes a foreign key constraint
+type ForeignKeyInfo struct {
+	Name             string `json:"name"`
+	TableName        string `json:"tableName"`
+	ColumnName       string `json:"columnName"`
+	ReferencedTable  string `json:"referencedTable"`
+	ReferencedColumn string `json:"referencedColumn"`
+	OnUpdate         string `json:"onUpdate"`
+	OnDelete         string `json:"onDelete"`
+}
+
+// IndexIntrospector is an optional interface for drivers that can enumerate indexes.
+// database semantics are driver-specific: schema name for PostgreSQL, database name for MySQL,
+// ignored for SQLite. Use type assertion drv.(IndexIntrospector) to check capability.
+type IndexIntrospector interface {
+	GetIndexes(database, table string) ([]IndexInfo, error)
+}
+
+// ForeignKeyIntrospector is an optional interface for drivers that can enumerate foreign keys.
+// database semantics mirror IndexIntrospector conventions.
+// Use type assertion drv.(ForeignKeyIntrospector) to check capability.
+type ForeignKeyIntrospector interface {
+	GetForeignKeys(database, table string) ([]ForeignKeyInfo, error)
+}
+
+// SchemaIntrospector is an optional interface for drivers that expose named schemas
+// within a database (e.g. PostgreSQL schemas). The database parameter is accepted for
+// API consistency but may be ignored by drivers already connected to a single database.
+// Use type assertion drv.(SchemaIntrospector) to check capability.
+type SchemaIntrospector interface {
+	GetSchemas(database string) ([]string, error)
 }
 
 // ExportableDriver provides chunked data export capability

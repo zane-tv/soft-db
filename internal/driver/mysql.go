@@ -2,12 +2,13 @@ package driver
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	mysql "github.com/go-sql-driver/mysql"
 )
 
 // MySQLDriver implements Driver for MySQL and MariaDB
@@ -24,8 +25,21 @@ func (d *MySQLDriver) Connect(ctx context.Context, cfg ConnectionConfig) error {
 		d.dbType = MySQL
 	}
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
+	tlsConfig, err := mysqlTLSConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	dsnConfig := mysql.NewConfig()
+	dsnConfig.User = cfg.Username
+	dsnConfig.Passwd = cfg.Password
+	dsnConfig.Net = "tcp"
+	dsnConfig.Addr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	dsnConfig.DBName = cfg.Database
+	dsnConfig.ParseTime = true
+	dsnConfig.TLSConfig = tlsConfig
+
+	dsn := dsnConfig.FormatDSN()
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -43,6 +57,23 @@ func (d *MySQLDriver) Connect(ctx context.Context, cfg ConnectionConfig) error {
 
 	d.db = db
 	return nil
+}
+
+func mysqlTLSConfig(cfg ConnectionConfig) (string, error) {
+	switch cfg.SSLMode {
+	case "", "disable":
+		return "false", nil
+	case "require":
+		return "true", nil
+	case "verify-ca", "verify-full":
+		const tlsConfigName = "softdb-custom"
+		if err := mysql.RegisterTLSConfig(tlsConfigName, &tls.Config{ServerName: cfg.Host}); err != nil && !strings.Contains(err.Error(), "already exists") {
+			return "", fmt.Errorf("register mysql TLS config: %w", err)
+		}
+		return tlsConfigName, nil
+	default:
+		return cfg.SSLMode, nil
+	}
 }
 
 func (d *MySQLDriver) Disconnect(ctx context.Context) error {
@@ -241,6 +272,13 @@ func (d *MySQLDriver) Functions(ctx context.Context) ([]FunctionInfo, error) {
 
 func (d *MySQLDriver) Type() DatabaseType { return d.dbType }
 func (d *MySQLDriver) IsConnected() bool  { return d.db != nil }
+
+func (d *MySQLDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	return d.db.BeginTx(ctx, opts)
+}
 
 func (d *MySQLDriver) GetStructureChangeCapabilities(ctx context.Context) (*StructureChangeCapabilities, error) {
 	return &StructureChangeCapabilities{
@@ -442,6 +480,103 @@ func (d *MySQLDriver) GetTableRows(table string, limit, offset int) (*QueryResul
 	defer rows.Close()
 
 	return scanRows(rows, start)
+}
+
+// ─── IndexIntrospector implementation ───
+
+var _ IndexIntrospector = (*MySQLDriver)(nil)
+
+func (d *MySQLDriver) GetIndexes(database, table string) ([]IndexInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if database == "" {
+		database = d.config.Database
+	}
+
+	query := `
+		SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME
+		FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+		ORDER BY INDEX_NAME, SEQ_IN_INDEX`
+
+	rows, err := d.db.Query(query, database, table)
+	if err != nil {
+		return nil, fmt.Errorf("get indexes %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	order := []string{}
+	byName := map[string]*IndexInfo{}
+	for rows.Next() {
+		var name, col string
+		var nonUnique int
+		if err := rows.Scan(&name, &nonUnique, &col); err != nil {
+			return nil, err
+		}
+		if _, ok := byName[name]; !ok {
+			byName[name] = &IndexInfo{
+				Name:      name,
+				TableName: table,
+				IsUnique:  nonUnique == 0,
+				IsPrimary: name == "PRIMARY",
+			}
+			order = append(order, name)
+		}
+		byName[name].Columns = append(byName[name].Columns, col)
+	}
+	result := make([]IndexInfo, 0, len(order))
+	for _, name := range order {
+		result = append(result, *byName[name])
+	}
+	return result, nil
+}
+
+// ─── ForeignKeyIntrospector implementation ───
+
+var _ ForeignKeyIntrospector = (*MySQLDriver)(nil)
+
+func (d *MySQLDriver) GetForeignKeys(database, table string) ([]ForeignKeyInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if database == "" {
+		database = d.config.Database
+	}
+
+	query := `
+		SELECT
+			kcu.CONSTRAINT_NAME,
+			kcu.COLUMN_NAME,
+			kcu.REFERENCED_TABLE_NAME,
+			kcu.REFERENCED_COLUMN_NAME,
+			rc.UPDATE_RULE,
+			rc.DELETE_RULE
+		FROM information_schema.KEY_COLUMN_USAGE kcu
+		JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+			ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+			AND kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+		WHERE kcu.TABLE_SCHEMA = ?
+			AND kcu.TABLE_NAME = ?
+			AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+		ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION`
+
+	rows, err := d.db.Query(query, database, table)
+	if err != nil {
+		return nil, fmt.Errorf("get foreign keys %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	var fks []ForeignKeyInfo
+	for rows.Next() {
+		var fk ForeignKeyInfo
+		fk.TableName = table
+		if err := rows.Scan(&fk.Name, &fk.ColumnName, &fk.ReferencedTable, &fk.ReferencedColumn, &fk.OnUpdate, &fk.OnDelete); err != nil {
+			return nil, err
+		}
+		fks = append(fks, fk)
+	}
+	return fks, nil
 }
 
 func (d *MySQLDriver) GetCreateTableDDL(table string) (string, error) {

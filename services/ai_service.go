@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"soft-db/internal/store"
@@ -17,19 +17,38 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// AIService proxies chat requests to OpenAI API with DB context injection
-type AIService struct {
-	oauthService  *OAuthService
-	schemaService *SchemaService
-	connService   *ConnectionService
-	store         *store.Store
-	app           *application.App
-
-	// Track active streams for cancellation
-	activeStreams map[string]context.CancelFunc
+// AIProvider is the interface that every AI backend must implement.
+type AIProvider interface {
+	StreamChat(ctx context.Context, messages []ChatMessage, model string) (io.ReadCloser, error)
+	ListModels(ctx context.Context) ([]ModelInfo, error)
+	Name() string
 }
 
-// ModelInfo describes an available AI model
+// ChatMessage is the generic message type shared across all providers.
+type ChatMessage struct {
+	Role    string
+	Content string
+}
+
+// normalizedDelta is the unified streaming event written by every provider.
+type normalizedDelta struct {
+	Delta string `json:"delta"`
+}
+
+// AIService proxies chat requests to the configured AI provider with DB context injection.
+type AIService struct {
+	oauthService    *OAuthService
+	schemaService   *SchemaService
+	connService     *ConnectionService
+	settingsService *SettingsService
+	store           *store.Store
+	app             *application.App
+
+	activeStreams   map[string]context.CancelFunc
+	activeStreamsMu sync.RWMutex
+}
+
+// ModelInfo describes an available AI model.
 type ModelInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -37,59 +56,63 @@ type ModelInfo struct {
 	Description string `json:"description"`
 }
 
-// codexRequest represents the ChatGPT Codex Responses API request body
-type codexRequest struct {
-	Model        string          `json:"model"`
-	Instructions string          `json:"instructions,omitempty"`
-	Input        []codexMessage  `json:"input"`
-	Stream       bool            `json:"stream"`
-	Store        bool            `json:"store"`
-}
-
-type codexMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-// NewAIService creates the AI chat service
-func NewAIService(oauth *OAuthService, schema *SchemaService, conn *ConnectionService, s *store.Store) *AIService {
+// NewAIService creates the AI chat service.
+func NewAIService(oauth *OAuthService, schema *SchemaService, conn *ConnectionService, settings *SettingsService, s *store.Store) *AIService {
 	return &AIService{
-		oauthService:  oauth,
-		schemaService: schema,
-		connService:   conn,
-		store:         s,
-		activeStreams:  make(map[string]context.CancelFunc),
+		oauthService:    oauth,
+		schemaService:   schema,
+		connService:     conn,
+		settingsService: settings,
+		store:           s,
+		activeStreams:   make(map[string]context.CancelFunc),
 	}
 }
 
-// SetApp sets the Wails application reference
+// SetApp sets the Wails application reference.
 func (a *AIService) SetApp(app *application.App) {
 	a.app = app
 }
 
+// getProvider returns the active AIProvider based on current settings.
+func (a *AIService) getProvider() AIProvider {
+	settings, _ := a.settingsService.GetSettings()
+	switch settings.AIProvider {
+	case "anthropic":
+		baseURL := settings.AIBaseURL
+		if baseURL == "" {
+			baseURL = "https://api.anthropic.com"
+		}
+		return &anthropicProvider{apiKey: settings.AIAPIKey, baseURL: baseURL}
+	case "ollama":
+		baseURL := settings.AIBaseURL
+		if baseURL == "" {
+			baseURL = "http://localhost:11434"
+		}
+		return &ollamaProvider{baseURL: baseURL}
+	default:
+		clientID, _ := a.store.GetSetting("openai_client_id")
+		return &openaiProvider{oauthService: a.oauthService, clientID: clientID}
+	}
+}
+
 // ─── Public Methods (Wails Bindings) ───
 
-// SendMessage sends a chat message and streams the response via events
+// SendMessage sends a chat message and streams the response via events.
 func (a *AIService) SendMessage(connectionID, message, model string) error {
 	if model == "" {
-		// Check persisted model selection
 		saved, err := a.store.GetSetting(fmt.Sprintf("ai_model_%s", connectionID))
 		if err == nil && saved != "" {
 			model = saved
 		} else {
-			model = "gpt-5.3-codex"
+			settings, _ := a.settingsService.GetSettings()
+			if settings.AIModel != "" {
+				model = settings.AIModel
+			} else {
+				model = "gpt-5.3-codex"
+			}
 		}
 	}
 
-	// Get OAuth token
-	clientID, _ := a.store.GetSetting("openai_client_id")
-	token, err := a.oauthService.GetValidToken(clientID)
-	if err != nil {
-		a.emitError(connectionID, "error", "Not authenticated. Please sign in with ChatGPT first.", 0)
-		return err
-	}
-
-	// Save user message
 	a.store.AddChatMessage(store.ChatMessage{
 		ConnectionID: connectionID,
 		Role:         "user",
@@ -97,32 +120,46 @@ func (a *AIService) SendMessage(connectionID, message, model string) error {
 		Model:        model,
 	})
 
-	// Build instructions + input for Codex Responses API
-	instructions, input, err := a.buildMessages(connectionID, message, model)
+	messages, err := a.buildMessages(connectionID)
 	if err != nil {
 		return err
 	}
 
-	// Create cancellable context
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	a.activeStreams[connectionID] = cancel
+	func() {
+		a.activeStreamsMu.Lock()
+		defer a.activeStreamsMu.Unlock()
+		a.activeStreams[connectionID] = cancel
+	}()
 
-	// Stream in background
 	go func() {
 		defer cancel()
-		defer delete(a.activeStreams, connectionID)
+		defer func() {
+			a.activeStreamsMu.Lock()
+			defer a.activeStreamsMu.Unlock()
+			delete(a.activeStreams, connectionID)
+		}()
 
-		fullContent, err := a.streamChatCompletion(ctx, token, model, instructions, input, connectionID)
+		provider := a.getProvider()
+		stream, err := provider.StreamChat(ctx, messages, model)
 		if err != nil {
 			if ctx.Err() == context.Canceled {
-				slog.Info("Stream cancelled by user", "connectionId", connectionID)
+				slog.Info("Stream cancelled", "connectionId", connectionID)
 				return
 			}
-			slog.Error("Stream error", "error", err, "connectionId", connectionID)
+			slog.Error("StreamChat error", "provider", provider.Name(), "error", err, "connectionId", connectionID)
+			a.emitError(connectionID, "error", err.Error(), 0)
 			return
 		}
 
-		// Save assistant response
+		fullContent, err := a.consumeStream(ctx, stream, connectionID)
+		if err != nil {
+			if ctx.Err() != context.Canceled {
+				slog.Error("Stream consume error", "error", err, "connectionId", connectionID)
+			}
+			return
+		}
+
 		a.store.AddChatMessage(store.ChatMessage{
 			ConnectionID: connectionID,
 			Role:         "assistant",
@@ -130,7 +167,6 @@ func (a *AIService) SendMessage(connectionID, message, model string) error {
 			Model:        model,
 		})
 
-		// Emit done event
 		a.emitEvent(connectionID, "ai:done", map[string]interface{}{
 			"fullContent": fullContent,
 		})
@@ -139,91 +175,134 @@ func (a *AIService) SendMessage(connectionID, message, model string) error {
 	return nil
 }
 
-// GetChatHistory returns persisted chat messages for a connection
+// GetChatHistory returns persisted chat messages for a connection.
 func (a *AIService) GetChatHistory(connectionID string) ([]store.ChatMessage, error) {
 	return a.store.ListChatMessages(connectionID, 100)
 }
 
-// ClearChatHistory deletes all chat messages for a connection
+// ClearChatHistory deletes all chat messages for a connection.
 func (a *AIService) ClearChatHistory(connectionID string) error {
 	return a.store.ClearChatMessages(connectionID)
 }
 
-// StopStreaming cancels an ongoing AI response stream
+// StopStreaming cancels an ongoing AI response stream.
 func (a *AIService) StopStreaming(connectionID string) {
-	if cancel, ok := a.activeStreams[connectionID]; ok {
+	a.activeStreamsMu.RLock()
+	cancel, ok := a.activeStreams[connectionID]
+	a.activeStreamsMu.RUnlock()
+
+	if ok {
 		cancel()
-		delete(a.activeStreams, connectionID)
+		func() {
+			a.activeStreamsMu.Lock()
+			defer a.activeStreamsMu.Unlock()
+			delete(a.activeStreams, connectionID)
+		}()
 	}
 }
 
-// ListModels returns the available AI models
+// ListModels returns the available models for the currently configured provider.
 func (a *AIService) ListModels() []ModelInfo {
-	return []ModelInfo{
-		{ID: "gpt-5.3-codex", Name: "GPT-5.3 Codex", Category: "code", Description: "Optimized for SQL generation and code tasks"},
-		{ID: "gpt-5.4", Name: "GPT-5.4", Category: "general", Description: "Latest flagship model — complex reasoning"},
-		{ID: "gpt-5", Name: "GPT-5", Category: "general", Description: "Versatile, multimodal"},
-		{ID: "gpt-5-mini", Name: "GPT-5 Mini", Category: "fast", Description: "Quick answers, cost-effective"},
-		{ID: "gpt-5-nano", Name: "GPT-5 Nano", Category: "fast", Description: "Ultra-fast, simple completions"},
-		{ID: "o4-mini", Name: "o4 Mini", Category: "reasoning", Description: "Deep analysis, code reasoning"},
-		{ID: "o3", Name: "o3", Category: "reasoning", Description: "Advanced reasoning and optimization"},
+	provider := a.getProvider()
+	models, err := provider.ListModels(context.Background())
+	if err != nil {
+		slog.Warn("ListModels failed", "provider", provider.Name(), "error", err)
+		return []ModelInfo{}
 	}
+	return models
 }
 
-// GetSelectedModel returns the persisted model selection for a connection
+// GetSelectedModel returns the persisted model selection for a connection.
 func (a *AIService) GetSelectedModel(connectionID string) string {
 	model, err := a.store.GetSetting(fmt.Sprintf("ai_model_%s", connectionID))
-	if err != nil || model == "" {
-		return "gpt-5.3-codex"
+	if err == nil && model != "" {
+		return model
 	}
-	return model
+	settings, _ := a.settingsService.GetSettings()
+	if settings.AIModel != "" {
+		return settings.AIModel
+	}
+	return "gpt-5.3-codex"
 }
 
-// SetSelectedModel persists the model selection for a connection
+// SetSelectedModel persists the model selection for a connection.
 func (a *AIService) SetSelectedModel(connectionID, modelID string) error {
 	return a.store.SetSetting(fmt.Sprintf("ai_model_%s", connectionID), modelID)
 }
 
 // ─── Internal Methods ───
 
-// buildMessages constructs the input array and instructions for Codex Responses API
-func (a *AIService) buildMessages(connectionID, userMessage, model string) (string, []codexMessage, error) {
-	// System prompt becomes "instructions"
-	instructions := a.buildSystemPrompt(connectionID)
+// consumeStream reads a normalized provider stream (SSE-like deltas) and emits frontend events.
+// Each line from the stream is expected to be "data: <json>" or "data: [DONE]".
+func (a *AIService) consumeStream(ctx context.Context, stream io.ReadCloser, connectionID string) (string, error) {
+	defer stream.Close()
 
-	// Expand @table_name mentions in the user message
-	userMessage = a.expandTableMentions(connectionID, userMessage)
+	var fullContent strings.Builder
+	scanner := bufio.NewScanner(stream)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	// Build input array (user/assistant messages only, no system)
-	var input []codexMessage
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return fullContent.String(), nil
+		}
 
-	// Load recent chat history for context
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := line[6:]
+		if data == "[DONE]" {
+			break
+		}
+
+		var evt normalizedDelta
+		if err := json.Unmarshal([]byte(data), &evt); err != nil {
+			continue
+		}
+
+		if evt.Delta != "" {
+			fullContent.WriteString(evt.Delta)
+			a.emitEvent(connectionID, "ai:chunk", map[string]interface{}{
+				"content": evt.Delta,
+				"role":    "assistant",
+			})
+		}
+	}
+
+	if err := scanner.Err(); err != nil && ctx.Err() == nil {
+		return fullContent.String(), err
+	}
+	return fullContent.String(), nil
+}
+
+// buildMessages constructs the full ChatMessage slice (system + history) for the provider.
+func (a *AIService) buildMessages(connectionID string) ([]ChatMessage, error) {
+	messages := []ChatMessage{
+		{Role: "system", Content: a.buildSystemPrompt(connectionID)},
+	}
+
 	history, _ := a.store.ListChatMessages(connectionID, 20)
 	for _, msg := range history {
 		if msg.Role == "system" {
 			continue
 		}
+		content := msg.Content
 		if msg.Role == "user" {
-			// Also expand @mentions in historical messages
-			input = append(input, codexMessage{Role: msg.Role, Content: a.expandTableMentions(connectionID, msg.Content)})
-		} else {
-			input = append(input, codexMessage{Role: msg.Role, Content: msg.Content})
+			content = a.expandTableMentions(connectionID, content)
 		}
+		messages = append(messages, ChatMessage{Role: msg.Role, Content: content})
 	}
 
-	return instructions, input, nil
+	return messages, nil
 }
 
-// expandTableMentions replaces @table_name patterns with full table schema info
 var tableMentionRe = regexp.MustCompile(`@(\w+)`)
 
 func (a *AIService) expandTableMentions(connectionID, message string) string {
-	// Quick check to avoid regex on messages without @
 	if !strings.Contains(message, "@") {
 		return message
 	}
 
-	// Get list of actual table names for validation
 	tables, err := a.schemaService.GetTables(connectionID)
 	if err != nil {
 		return message
@@ -234,9 +313,9 @@ func (a *AIService) expandTableMentions(connectionID, message string) string {
 	}
 
 	return tableMentionRe.ReplaceAllStringFunc(message, func(match string) string {
-		tableName := match[1:] // strip @
+		tableName := match[1:]
 		if !tableSet[tableName] {
-			return match // not a known table, leave as-is
+			return match
 		}
 
 		cols, err := a.schemaService.GetColumns(connectionID, tableName)
@@ -256,11 +335,9 @@ func (a *AIService) expandTableMentions(connectionID, message string) string {
 	})
 }
 
-// buildSystemPrompt creates the system prompt with DB schema context
 func (a *AIService) buildSystemPrompt(connectionID string) string {
 	var sb strings.Builder
 
-	// Detect DB type
 	dbType := a.connService.GetConnectionType(connectionID)
 	isMongo := dbType == "mongodb"
 
@@ -270,7 +347,6 @@ func (a *AIService) buildSystemPrompt(connectionID string) string {
 		sb.WriteString("You are a database assistant integrated into SoftDB, a database management tool.\n")
 	}
 
-	// Try to get schema info
 	tables, err := a.schemaService.GetTables(connectionID)
 	if err == nil && len(tables) > 0 {
 		if isMongo {
@@ -338,127 +414,6 @@ func (a *AIService) buildSystemPrompt(connectionID string) string {
 	sb.WriteString("\nRespond in the same language the user writes in.")
 
 	return sb.String()
-}
-
-// streamChatCompletion calls ChatGPT Codex Responses API with streaming
-func (a *AIService) streamChatCompletion(ctx context.Context, token, model string, instructions string, input []codexMessage, connectionID string) (string, error) {
-	reqBody := codexRequest{
-		Model:        model,
-		Instructions: instructions,
-		Input:        input,
-		Stream:       true,
-		Store:        false,
-	}
-
-	bodyJSON, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://chatgpt.com/backend-api/codex/responses", strings.NewReader(string(bodyJSON)))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	client := &http.Client{Timeout: 3 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("API request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Handle error responses
-	if resp.StatusCode != 200 {
-		return "", a.handleAPIError(resp, connectionID)
-	}
-
-	// Parse SSE stream (Responses API format)
-	var fullContent strings.Builder
-	scanner := bufio.NewScanner(resp.Body)
-	// Increase buffer for large responses
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// SSE format: "event: <type>" then "data: <json>"
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
-		}
-
-		// Parse the SSE data JSON
-		var event struct {
-			Type  string `json:"type"`
-			Delta string `json:"delta"`
-		}
-
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			continue
-		}
-
-		// Handle text delta events
-		if event.Type == "response.output_text.delta" && event.Delta != "" {
-			fullContent.WriteString(event.Delta)
-
-			// Emit chunk to frontend
-			a.emitEvent(connectionID, "ai:chunk", map[string]interface{}{
-				"content": event.Delta,
-				"role":    "assistant",
-			})
-		}
-
-		// Handle completion
-		if event.Type == "response.completed" {
-			break
-		}
-	}
-
-	return fullContent.String(), nil
-}
-
-// handleAPIError processes API error responses (429 rate limit vs quota)
-func (a *AIService) handleAPIError(resp *http.Response, connectionID string) error {
-	body, _ := io.ReadAll(resp.Body)
-	bodyStr := string(body)
-
-	if resp.StatusCode == 429 {
-		// Distinguish billing_not_active vs quota vs rate limit
-		if strings.Contains(bodyStr, "billing_not_active") {
-			a.emitError(connectionID, "quota_exhausted",
-				"Your OpenAI account is not active. Please check your billing details at platform.openai.com", 429)
-		} else if strings.Contains(bodyStr, "insufficient_quota") {
-			a.emitError(connectionID, "quota_exhausted",
-				"ChatGPT usage limit reached. Please wait or upgrade your plan at openai.com", 429)
-		} else {
-			retryAfter := resp.Header.Get("x-ratelimit-reset-requests")
-			if retryAfter == "" {
-				retryAfter = resp.Header.Get("Retry-After")
-			}
-			msg := "Rate limited. Please wait"
-			if retryAfter != "" {
-				msg = fmt.Sprintf("Rate limited. Please wait %s", retryAfter)
-			}
-			a.emitError(connectionID, "rate_limited", msg, 429)
-		}
-		return fmt.Errorf("API error (429): %s", bodyStr)
-	}
-
-	if resp.StatusCode == 401 {
-		a.emitError(connectionID, "auth_error",
-			"Authentication failed. Please sign in again.", 401)
-		return fmt.Errorf("API auth error (401)")
-	}
-
-	// Generic error
-	a.emitError(connectionID, "error",
-		fmt.Sprintf("API error (%d): %s", resp.StatusCode, bodyStr), resp.StatusCode)
-	return fmt.Errorf("API error (%d): %s", resp.StatusCode, bodyStr)
 }
 
 // ─── Event Helpers ───

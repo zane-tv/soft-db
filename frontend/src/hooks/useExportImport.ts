@@ -36,6 +36,7 @@ export function useExportProgress() {
 
   useEffect(() => {
     const cleanupProgress = Events.On('export:progress' as any, (ev: any) => {
+      setError(null)
       setProgress(ev.data as ExportProgress)
       setIsActive(true)
     })
@@ -74,6 +75,7 @@ export function useImportProgress() {
 
   useEffect(() => {
     const cleanupProgress = Events.On('import:progress' as any, (ev: any) => {
+      setError(null)
       setProgress(ev.data as ExportProgress)
       setIsActive(true)
     })

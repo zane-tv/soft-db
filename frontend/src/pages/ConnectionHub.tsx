@@ -18,38 +18,35 @@ import { ImportModal } from '@/components/ImportModal'
 import { useUpdate } from '@/hooks/useUpdate'
 
 // ─── Date Formatter ───
-function formatLastUsed(isoStr: string): string {
+const LOCALE_MAP: Record<string, string> = { en: 'en-US', vi: 'vi-VN' }
+
+function formatLastUsed(isoStr: string, lang = 'en'): string {
   const date = new Date(isoStr)
   if (isNaN(date.getTime())) return isoStr
 
+  const locale = LOCALE_MAP[lang] ?? lang
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)
 
-  // Less than 1 hour → relative
-  if (diffMins < 1) return 'vừa xong'
-  if (diffMins < 60) return `${diffMins} phút trước`
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
 
-  // Less than 24 hours → relative hours
-  if (diffHours < 24) return `${diffHours} giờ trước`
+  if (diffMins < 1) return rtf.format(0, 'minute')
+  if (diffMins < 60) return rtf.format(-diffMins, 'minute')
+  if (diffHours < 24) return rtf.format(-diffHours, 'hour')
 
-  // Format time part
-  const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const timeStr = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
 
-  // Today
   const isToday = date.toDateString() === now.toDateString()
-  if (isToday) return `Hôm nay ${timeStr}`
+  if (isToday) return rtf.format(0, 'day').replace(/^./, c => c.toUpperCase()) + ` ${timeStr}`
 
-  // Yesterday
   const yesterday = new Date(now)
   yesterday.setDate(yesterday.getDate() - 1)
-  if (date.toDateString() === yesterday.toDateString()) return `Hôm qua ${timeStr}`
+  if (date.toDateString() === yesterday.toDateString()) return rtf.format(-1, 'day').replace(/^./, c => c.toUpperCase()) + ` ${timeStr}`
 
-  // Older → DD/MM HH:mm
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  return `${day}/${month} ${timeStr}`
+  const dateStr = date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' })
+  return `${dateStr} ${timeStr}`
 }
 
 // ─── Database Branding ───
@@ -517,7 +514,7 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick }: ConnectionCardPr
               : status === 'offline'
                 ? t('connection.status.offline')
                 : conn.lastUsed
-                  ? `${t('hub.idle')} — ${t('hub.lastUsed')} ${formatLastUsed(conn.lastUsed)}`
+                  ? `${t('hub.idle')} — ${t('hub.lastUsed')} ${formatLastUsed(conn.lastUsed, (settingsData?.language as string) ?? 'en')}`
                   : t('connection.status.idle')}
           </span>
         </div>

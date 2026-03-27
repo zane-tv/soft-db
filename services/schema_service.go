@@ -268,6 +268,49 @@ func (s *SchemaService) SwitchDatabase(connectionID string, database string) err
 	return multiDB.SwitchDatabase(ctx, database)
 }
 
+// GetTableIndexes returns indexes for a table. The database param is forwarded to the
+// driver (schema name for PostgreSQL, database name for MySQL, ignored for SQLite).
+// Returns an empty slice when the driver does not support index introspection.
+func (s *SchemaService) GetTableIndexes(connectionID, database, table string) ([]driver.IndexInfo, error) {
+	drv, err := s.connService.GetDriver(connectionID)
+	if err != nil {
+		return nil, err
+	}
+	intro, ok := drv.(driver.IndexIntrospector)
+	if !ok {
+		return []driver.IndexInfo{}, nil
+	}
+	return intro.GetIndexes(database, table)
+}
+
+// GetTableForeignKeys returns foreign key constraints for a table. The database param is
+// forwarded to the driver. Returns an empty slice when not supported.
+func (s *SchemaService) GetTableForeignKeys(connectionID, database, table string) ([]driver.ForeignKeyInfo, error) {
+	drv, err := s.connService.GetDriver(connectionID)
+	if err != nil {
+		return nil, err
+	}
+	intro, ok := drv.(driver.ForeignKeyIntrospector)
+	if !ok {
+		return []driver.ForeignKeyInfo{}, nil
+	}
+	return intro.GetForeignKeys(database, table)
+}
+
+// GetDatabaseSchemas returns named schemas within the connected database (e.g. PostgreSQL
+// schemas). Returns an empty slice when the driver does not support schema enumeration.
+func (s *SchemaService) GetDatabaseSchemas(connectionID, database string) ([]string, error) {
+	drv, err := s.connService.GetDriver(connectionID)
+	if err != nil {
+		return nil, err
+	}
+	intro, ok := drv.(driver.SchemaIntrospector)
+	if !ok {
+		return []string{}, nil
+	}
+	return intro.GetSchemas(database)
+}
+
 func (s *SchemaService) DropTable(connectionID string, table string) error {
 	drv, err := s.connService.GetDriver(connectionID)
 	if err != nil {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -32,8 +34,7 @@ func (d *RedshiftDriver) Connect(ctx context.Context, cfg ConnectionConfig) erro
 		dbName = "dev"
 	}
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port, dbName, sslMode)
+	dsn := redshiftDSN(cfg.Username, cfg.Password, cfg.Host, cfg.Port, dbName, sslMode)
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -429,8 +430,7 @@ func (d *RedshiftDriver) connectToDB(ctx context.Context, database string) (*sql
 		sslMode = "require"
 	}
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		d.config.Username, d.config.Password, d.config.Host, d.config.Port, database, sslMode)
+	dsn := redshiftDSN(d.config.Username, d.config.Password, d.config.Host, d.config.Port, database, sslMode)
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -447,4 +447,19 @@ func (d *RedshiftDriver) connectToDB(ctx context.Context, database string) (*sql
 	}
 
 	return db, nil
+}
+
+func redshiftDSN(username, password, host string, port int, database, sslMode string) string {
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(username, password),
+		Host:   net.JoinHostPort(host, fmt.Sprint(port)),
+		Path:   database,
+	}
+
+	q := u.Query()
+	q.Set("sslmode", sslMode)
+	u.RawQuery = q.Encode()
+
+	return u.String()
 }

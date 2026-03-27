@@ -2,8 +2,10 @@ package store
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +19,8 @@ import (
 
 // Store handles local SQLite persistence for connections and query history
 type Store struct {
-	db *sql.DB
+	db            *sql.DB
+	encryptionKey []byte
 }
 
 const (
@@ -62,11 +65,30 @@ func newAtPath(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to migrate store: %w", err)
 	}
 
+	if err := s.initEncryptionKey(); err != nil {
+		return nil, fmt.Errorf("failed to init encryption key: %w", err)
+	}
+
+	if err := s.migrateEncryptedData(); err != nil {
+		// Non-fatal: log and continue — losing migration is better than failing to start
+		log.Printf("store: encryption migration warning: %v", err)
+	}
+
 	return s, nil
 }
 
 func (s *Store) migrate() error {
 	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_meta (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
+	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS connections (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
@@ -127,6 +149,24 @@ func (s *Store) migrate() error {
 
 	if err := s.addColumnIfMissing("snippets", "folder_path", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
+	}
+
+	if err := s.addColumnIfMissing("snippets", "is_favorite", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+
+	for _, col := range []struct{ name, def string }{
+		{"ssh_enabled", "INTEGER NOT NULL DEFAULT 0"},
+		{"ssh_host", "TEXT NOT NULL DEFAULT ''"},
+		{"ssh_port", "INTEGER NOT NULL DEFAULT 0"},
+		{"ssh_user", "TEXT NOT NULL DEFAULT ''"},
+		{"ssh_password", "TEXT NOT NULL DEFAULT ''"},
+		{"ssh_key_path", "TEXT NOT NULL DEFAULT ''"},
+		{"safe_mode", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.addColumnIfMissing("connections", col.name, col.def); err != nil {
+			return err
+		}
 	}
 
 	if _, err := s.db.Exec(`UPDATE snippets SET connection_id = '' WHERE connection_id IS NULL`); err != nil {
@@ -199,29 +239,152 @@ func (s *Store) columnExists(tableName string, columnName string) (bool, error) 
 	return false, rows.Err()
 }
 
-// ─── Connection CRUD ───
+// ─── Encryption Key Management ───
 
-func (s *Store) SaveConnection(cfg driver.ConnectionConfig) error {
-	// Encrypt password before storing
-	encryptedPwd, err := crypto.Encrypt(cfg.Password)
+func (s *Store) initEncryptionKey() error {
+	var saltB64 string
+	err := s.db.QueryRow(`SELECT value FROM schema_meta WHERE key = 'encryption_salt'`).Scan(&saltB64)
+	if err == sql.ErrNoRows {
+		salt, err := crypto.GenerateSalt()
+		if err != nil {
+			return fmt.Errorf("generate salt: %w", err)
+		}
+		saltB64 = base64.StdEncoding.EncodeToString(salt)
+		if _, err := s.db.Exec(`INSERT INTO schema_meta (key, value) VALUES ('encryption_salt', ?)`, saltB64); err != nil {
+			return fmt.Errorf("store salt: %w", err)
+		}
+		s.encryptionKey = crypto.DeriveKeyFromSalt(salt)
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("failed to encrypt password: %w", err)
+		return fmt.Errorf("read salt: %w", err)
+	}
+
+	salt, err := base64.StdEncoding.DecodeString(saltB64)
+	if err != nil {
+		return fmt.Errorf("decode salt: %w", err)
+	}
+	s.encryptionKey = crypto.DeriveKeyFromSalt(salt)
+	return nil
+}
+
+func (s *Store) migrateEncryptedData() error {
+	var done string
+	err := s.db.QueryRow(`SELECT value FROM schema_meta WHERE key = 'migration_v2_done'`).Scan(&done)
+	if err == nil && done == "true" {
+		return nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("check migration flag: %w", err)
+	}
+
+	rows, err := s.db.Query(`SELECT id, password FROM connections`)
+	if err != nil {
+		return fmt.Errorf("query connections: %w", err)
+	}
+	type connPwd struct {
+		id  string
+		pwd string
+	}
+	var entries []connPwd
+	for rows.Next() {
+		var e connPwd
+		if err := rows.Scan(&e.id, &e.pwd); err != nil {
+			rows.Close()
+			return err
+		}
+		entries = append(entries, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, e := range entries {
+		if e.pwd == "" {
+			continue
+		}
+		plaintext, err := crypto.LegacyDecrypt(e.pwd)
+		if err != nil {
+			log.Printf("store: migration skip connection %s: %v", e.id, err)
+			continue
+		}
+		reencrypted, err := crypto.EncryptWithKey(plaintext, s.encryptionKey)
+		if err != nil {
+			log.Printf("store: migration re-encrypt connection %s: %v", e.id, err)
+			continue
+		}
+		if _, err := s.db.Exec(`UPDATE connections SET password = ? WHERE id = ?`, reencrypted, e.id); err != nil {
+			log.Printf("store: migration update connection %s: %v", e.id, err)
+		}
+	}
+
+	var oauthAccess, oauthRefresh string
+	oauthErr := s.db.QueryRow(`SELECT access_token, refresh_token FROM oauth_tokens WHERE id = 1`).Scan(&oauthAccess, &oauthRefresh)
+	if oauthErr == nil {
+		if plain, err := crypto.LegacyDecrypt(oauthAccess); err == nil {
+			if enc, err := crypto.EncryptWithKey(plain, s.encryptionKey); err == nil {
+				s.db.Exec(`UPDATE oauth_tokens SET access_token = ? WHERE id = 1`, enc)
+			}
+		}
+		if plain, err := crypto.LegacyDecrypt(oauthRefresh); err == nil {
+			if enc, err := crypto.EncryptWithKey(plain, s.encryptionKey); err == nil {
+				s.db.Exec(`UPDATE oauth_tokens SET refresh_token = ? WHERE id = 1`, enc)
+			}
+		}
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO connections (id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO schema_meta (key, value) VALUES ('migration_v2_done', 'true')
+		ON CONFLICT(key) DO UPDATE SET value = 'true'`)
+	return err
+}
+
+// ─── Connection CRUD ───
+
+func (s *Store) SaveConnection(cfg driver.ConnectionConfig) error {
+	encryptedPwd, err := crypto.EncryptWithKey(cfg.Password, s.encryptionKey)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt password: %w", err)
+	}
+	encryptedSSHPwd, err := crypto.EncryptWithKey(cfg.SSHPassword, s.encryptionKey)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt SSH password: %w", err)
+	}
+
+	sshEnabled := 0
+	if cfg.SSHEnabled {
+		sshEnabled = 1
+	}
+	safeMode := 0
+	if cfg.SafeMode {
+		safeMode = 1
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO connections (
+			id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode,
+			ssh_enabled, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_path, safe_mode
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, type=excluded.type, host=excluded.host, port=excluded.port,
 			database_name=excluded.database_name, username=excluded.username, password=excluded.password,
-			file_path=excluded.file_path, uri=excluded.uri, ssl_mode=excluded.ssl_mode, updated_at=datetime('now')`,
-		cfg.ID, cfg.Name, cfg.Type, cfg.Host, cfg.Port, cfg.Database, cfg.Username, encryptedPwd, cfg.FilePath, cfg.URI, cfg.SSLMode)
+			file_path=excluded.file_path, uri=excluded.uri, ssl_mode=excluded.ssl_mode,
+			ssh_enabled=excluded.ssh_enabled, ssh_host=excluded.ssh_host, ssh_port=excluded.ssh_port,
+			ssh_user=excluded.ssh_user, ssh_password=excluded.ssh_password, ssh_key_path=excluded.ssh_key_path,
+			safe_mode=excluded.safe_mode,
+			updated_at=datetime('now')`,
+		cfg.ID, cfg.Name, cfg.Type, cfg.Host, cfg.Port, cfg.Database, cfg.Username, encryptedPwd,
+		cfg.FilePath, cfg.URI, cfg.SSLMode,
+		sshEnabled, cfg.SSHHost, cfg.SSHPort, cfg.SSHUser, encryptedSSHPwd, cfg.SSHKeyPath, safeMode)
 	return err
 }
 
 func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode, last_used
+		SELECT id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode, last_used,
+		       ssh_enabled, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_path, safe_mode
 		FROM connections ORDER BY updated_at DESC`)
 	if err != nil {
 		return nil, err
@@ -234,13 +397,24 @@ func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 		var lastUsed sql.NullString
 		var filePath sql.NullString
 		var uri sql.NullString
-		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.Database, &c.Username, &c.Password, &filePath, &uri, &c.SSLMode, &lastUsed); err != nil {
+		var sshEnabled int64
+		var safeModeInt int64
+		var encSSHPwd string
+		if err := rows.Scan(
+			&c.ID, &c.Name, &c.Type, &c.Host, &c.Port, &c.Database, &c.Username, &c.Password,
+			&filePath, &uri, &c.SSLMode, &lastUsed,
+			&sshEnabled, &c.SSHHost, &c.SSHPort, &c.SSHUser, &encSSHPwd, &c.SSHKeyPath, &safeModeInt,
+		); err != nil {
 			return nil, err
 		}
-		// Decrypt password (backward-compatible with plaintext)
-		if decrypted, err := crypto.Decrypt(c.Password); err == nil {
+		if decrypted, err := crypto.DecryptWithKey(c.Password, s.encryptionKey); err == nil {
 			c.Password = decrypted
 		}
+		if decrypted, err := crypto.DecryptWithKey(encSSHPwd, s.encryptionKey); err == nil {
+			c.SSHPassword = decrypted
+		}
+		c.SSHEnabled = sshEnabled != 0
+		c.SafeMode = safeModeInt != 0
 		if filePath.Valid {
 			c.FilePath = filePath.String
 		}
@@ -331,6 +505,7 @@ type Snippet struct {
 	QueryText    string   `json:"queryText"`
 	Tags         []string `json:"tags"`
 	FolderPath   string   `json:"folderPath"`
+	IsFavorite   bool     `json:"isFavorite"`
 	CreatedAt    string   `json:"createdAt"`
 	UpdatedAt    string   `json:"updatedAt"`
 }
@@ -349,10 +524,15 @@ func (s *Store) CreateSnippet(snippet Snippet) (Snippet, error) {
 		return Snippet{}, err
 	}
 
+	isFavorite := 0
+	if snippet.IsFavorite {
+		isFavorite = 1
+	}
+
 	result, err := s.db.Exec(`
-		INSERT INTO snippets (connection_id, title, query_text, tags, folder_path)
-		VALUES (?, ?, ?, ?, ?)`,
-		snippet.ConnectionID, snippet.Title, snippet.QueryText, string(tagsJSON), snippet.FolderPath)
+		INSERT INTO snippets (connection_id, title, query_text, tags, folder_path, is_favorite)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		snippet.ConnectionID, snippet.Title, snippet.QueryText, string(tagsJSON), snippet.FolderPath, isFavorite)
 	if err != nil {
 		return Snippet{}, err
 	}
@@ -376,18 +556,24 @@ func (s *Store) UpdateSnippet(accessConnectionID string, snippet Snippet) (Snipp
 		return Snippet{}, err
 	}
 
+	isFavorite := 0
+	if snippet.IsFavorite {
+		isFavorite = 1
+	}
+
 	args := append([]any{
 		snippet.ConnectionID,
 		snippet.Title,
 		snippet.QueryText,
 		string(tagsJSON),
 		snippet.FolderPath,
+		isFavorite,
 		snippet.ID,
 	}, snippetAccessArgs(accessConnectionID)...)
 
 	result, err := s.db.Exec(`
 		UPDATE snippets
-		SET connection_id = ?, title = ?, query_text = ?, tags = ?, folder_path = ?, updated_at = datetime('now')
+		SET connection_id = ?, title = ?, query_text = ?, tags = ?, folder_path = ?, is_favorite = ?, updated_at = datetime('now')
 		WHERE id = ? AND `+snippetAccessClause(accessConnectionID),
 		args...)
 	if err != nil {
@@ -436,7 +622,7 @@ func (s *Store) ListSnippetsWithFilter(filter SnippetListFilter) ([]Snippet, err
 	filter = normalizeSnippetListFilter(filter)
 
 	query := `
-		SELECT id, COALESCE(connection_id, ''), title, query_text, tags, COALESCE(folder_path, ''), created_at, COALESCE(updated_at, created_at)
+		SELECT id, COALESCE(connection_id, ''), title, query_text, tags, COALESCE(folder_path, ''), COALESCE(is_favorite, 0), created_at, COALESCE(updated_at, created_at)
 		FROM snippets`
 	conditions := make([]string, 0, 3)
 	args := make([]any, 0, 4)
@@ -461,7 +647,7 @@ func (s *Store) ListSnippetsWithFilter(filter SnippetListFilter) ([]Snippet, err
 		query += ` WHERE ` + strings.Join(conditions, ` AND `)
 	}
 
-	query += ` ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC`
+	query += ` ORDER BY COALESCE(is_favorite, 0) DESC, COALESCE(updated_at, created_at) DESC, created_at DESC`
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -536,7 +722,7 @@ func (s *Store) DeleteSnippet(id int) error {
 
 func (s *Store) getSnippetByID(id int) (Snippet, error) {
 	row := s.db.QueryRow(`
-		SELECT id, COALESCE(connection_id, ''), title, query_text, tags, COALESCE(folder_path, ''), created_at, COALESCE(updated_at, created_at)
+		SELECT id, COALESCE(connection_id, ''), title, query_text, tags, COALESCE(folder_path, ''), COALESCE(is_favorite, 0), created_at, COALESCE(updated_at, created_at)
 		FROM snippets
 		WHERE id = ?`, id)
 	return scanSnippet(row)
@@ -545,9 +731,11 @@ func (s *Store) getSnippetByID(id int) (Snippet, error) {
 func scanSnippet(scanner interface{ Scan(dest ...any) error }) (Snippet, error) {
 	var snippet Snippet
 	var tagsStr string
-	if err := scanner.Scan(&snippet.ID, &snippet.ConnectionID, &snippet.Title, &snippet.QueryText, &tagsStr, &snippet.FolderPath, &snippet.CreatedAt, &snippet.UpdatedAt); err != nil {
+	var isFavorite int
+	if err := scanner.Scan(&snippet.ID, &snippet.ConnectionID, &snippet.Title, &snippet.QueryText, &tagsStr, &snippet.FolderPath, &isFavorite, &snippet.CreatedAt, &snippet.UpdatedAt); err != nil {
 		return Snippet{}, err
 	}
+	snippet.IsFavorite = isFavorite != 0
 	if err := json.Unmarshal([]byte(tagsStr), &snippet.Tags); err != nil {
 		snippet.Tags = []string{}
 	}
@@ -663,11 +851,11 @@ type OAuthTokens struct {
 
 // SaveOAuthTokens encrypts and stores OAuth tokens (single row, upsert)
 func (s *Store) SaveOAuthTokens(tokens OAuthTokens) error {
-	encAccess, err := crypto.Encrypt(tokens.AccessToken)
+	encAccess, err := crypto.EncryptWithKey(tokens.AccessToken, s.encryptionKey)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt access token: %w", err)
 	}
-	encRefresh, err := crypto.Encrypt(tokens.RefreshToken)
+	encRefresh, err := crypto.EncryptWithKey(tokens.RefreshToken, s.encryptionKey)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt refresh token: %w", err)
 	}
@@ -698,11 +886,10 @@ func (s *Store) LoadOAuthTokens() (OAuthTokens, error) {
 		return tokens, err
 	}
 
-	// Decrypt tokens
-	if decrypted, err := crypto.Decrypt(tokens.AccessToken); err == nil {
+	if decrypted, err := crypto.DecryptWithKey(tokens.AccessToken, s.encryptionKey); err == nil {
 		tokens.AccessToken = decrypted
 	}
-	if decrypted, err := crypto.Decrypt(tokens.RefreshToken); err == nil {
+	if decrypted, err := crypto.DecryptWithKey(tokens.RefreshToken, s.encryptionKey); err == nil {
 		tokens.RefreshToken = decrypted
 	}
 

@@ -12,6 +12,10 @@ import { SettingsModal } from '@/components/SettingsModal'
 import { QueryHistoryDrawer } from '@/components/QueryHistoryDrawer'
 import { AIChatPanel } from '@/components/AIChatPanel'
 import { ConfirmModal } from '@/components/ConfirmModal'
+import { ExplainView } from '@/components/ExplainView'
+import { ERDiagram } from '@/components/ERDiagram'
+// import { SchemaCompare } from '@/components/SchemaCompare' // temporarily disabled
+import { QueryBuilder } from '@/components/QueryBuilder'
 import { useSettingsContext } from '@/hooks/useSettings'
 import { detectEditableTable } from '@/hooks/useEditableGrid'
 import * as EditService from '../../bindings/soft-db/services/editservice'
@@ -78,6 +82,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   ])
   const [activeTabId, setActiveTabId] = useState(cached?.activeTabId ?? '1')
   const [isExecuting, setIsExecuting] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(cached?.sidebarCollapsed ?? false)
   const [sidebarWidthPx, setSidebarWidthPx] = useState(cached?.sidebarWidth ?? 220)
   const [structureTable, setStructureTable] = useState<string | null>(null)
@@ -85,8 +90,12 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const [snippetSaveToken, setSnippetSaveToken] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [erDiagramOpen, setErDiagramOpen] = useState(false)
+  // const [compareOpen, setCompareOpen] = useState(false) // temporarily disabled
+  const [queryBuilderOpen, setQueryBuilderOpen] = useState(false)
   const [aiPrefill, setAiPrefill] = useState('')
   const [aiPrefillMode, setAiPrefillMode] = useState<'append' | 'replace'>('append')
+  const [explainResult, setExplainResult] = useState<string | null>(null)
   const [confirmQuery, setConfirmQuery] = useState<{
     query: string
     title: string
@@ -263,10 +272,28 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     }
   }, [activeTabId, connectionId, executeMutation, settings.autoLimit, settings.defaultLimit, conn?.type])
 
-  // Entry point with confirm check
   const handleExecute = useCallback(async () => {
     if (!activeTab?.query.trim() || isExecuting) return
     const queryText = activeTab.query.trim()
+    setExplainResult(null)
+
+    if (conn?.safeMode) {
+      try {
+        const destructive = await QueryService.IsDestructiveQuery(connectionId, queryText)
+        if (destructive) {
+          setConfirmQuery({
+            query: queryText,
+            title: 'Safe Mode: Destructive Query Detected',
+            message: 'This query may modify or destroy data. Safe mode requires explicit confirmation before execution.',
+            detail: queryText,
+            confirmText: 'Execute Anyway',
+          })
+          return
+        }
+      } catch {
+        // safe mode check failed — fall through to normal analysis
+      }
+    }
 
     let analysis: QueryAnalysis | null = null
     try {
@@ -282,29 +309,24 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     }
 
     doExecuteQuery(queryText)
-  }, [activeTab, isExecuting, connectionId, buildConfirmFromAnalysis, doExecuteQuery])
+  }, [activeTab, isExecuting, connectionId, conn?.safeMode, buildConfirmFromAnalysis, doExecuteQuery])
 
   const handleExplain = useCallback(async () => {
     if (!activeTab?.query.trim() || isExecuting || isMongoConnection || isRedisConnection) return
 
     const queryText = activeTab.query.trim().replace(/;\s*$/, '')
-    const explainQuery = /^\s*explain\b/i.test(queryText) ? queryText : `EXPLAIN ${queryText}`
-
-    let analysis: QueryAnalysis | null = null
+    setIsExecuting(true)
+    setExplainResult(null)
     try {
-      analysis = await QueryService.AnalyzeQuery(connectionId, explainQuery)
-    } catch {
-      analysis = null
+      const result = await QueryService.ExplainQuery(connectionId, queryText)
+      setExplainResult(result)
+    } catch (err) {
+      const fallbackQuery = /^\s*explain\b/i.test(queryText) ? queryText : `EXPLAIN ${queryText}`
+      doExecuteQuery(fallbackQuery)
+    } finally {
+      setIsExecuting(false)
     }
-
-    const confirmPayload = buildConfirmFromAnalysis(explainQuery, analysis, 'Run Explain')
-    if (confirmPayload) {
-      setConfirmQuery(confirmPayload)
-      return
-    }
-
-    doExecuteQuery(explainQuery)
-  }, [activeTab, isExecuting, isMongoConnection, isRedisConnection, connectionId, buildConfirmFromAnalysis, doExecuteQuery])
+  }, [activeTab, isExecuting, isMongoConnection, isRedisConnection, connectionId, doExecuteQuery])
 
   const handleOptimize = useCallback(async () => {
     if (!activeTab?.query.trim()) return
@@ -355,6 +377,18 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
       setConfirmQuery(null)
     }
   }, [confirmQuery, doExecuteQuery])
+
+  const handleCancelQuery = useCallback(async () => {
+    if (!isExecuting || isCancelling) return
+    setIsCancelling(true)
+    try {
+      await QueryService.CancelQuery(connectionId)
+    } catch {
+      // Cancel is best-effort; query will finish or error on its own
+    } finally {
+      setIsCancelling(false)
+    }
+  }, [isExecuting, isCancelling, connectionId])
 
   const handleSnippetSaveShortcut = useCallback(() => {
     if (activeTab?.isFullView) return
@@ -614,6 +648,12 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
                 onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
                 onAIToggle={() => setAiPanelOpen(!aiPanelOpen)}
                 aiPanelOpen={aiPanelOpen}
+                onERDiagramToggle={!isMongoConnection && !isRedisConnection ? () => setErDiagramOpen(!erDiagramOpen) : undefined}
+                erDiagramOpen={erDiagramOpen}
+                // onCompareToggle={() => setCompareOpen(!compareOpen)} // temporarily disabled
+                // compareOpen={compareOpen} // temporarily disabled
+                onQueryBuilderToggle={!isMongoConnection && !isRedisConnection ? () => setQueryBuilderOpen(!queryBuilderOpen) : undefined}
+                queryBuilderOpen={queryBuilderOpen}
               />
 
               {/* Code Editor */}
@@ -636,12 +676,6 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
                 {/* Floating Run Button */}
                 <div className="absolute bottom-4 right-4 z-10">
                   <div className="flex flex-col items-end gap-2">
-                    {(isMongoConnection || isRedisConnection) && (
-                      <div className="max-w-[360px] rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-200 shadow-sm">
-                        {isMongoConnection ? 'Explain is intentionally unavailable for MongoDB in v1.' : 'Explain is not applicable for Redis connections.'}
-                      </div>
-                    )}
-
                     <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -665,18 +699,30 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
                       <span className="font-medium text-xs">Explain</span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={handleExecute}
-                      disabled={isExecuting || !activeTab?.query.trim()}
-                      className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-hover hover:brightness-110 text-white px-5 py-2.5 rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <span className={`material-symbols-outlined text-[20px] ${isExecuting ? 'animate-spin' : ''}`}>
-                        {isExecuting ? 'sync' : 'play_arrow'}
-                      </span>
-                      <span className="font-medium text-sm">{isExecuting ? 'Running...' : 'Run Query'}</span>
-                      <kbd className="bg-white/20 text-white/90 text-[10px] px-1.5 py-0.5 rounded ml-1 font-mono">{navigator.platform?.includes('Mac') ? '⌘E' : 'Ctrl+E'}</kbd>
-                    </button>
+                    {isExecuting ? (
+                      <button
+                        type="button"
+                        onClick={handleCancelQuery}
+                        disabled={isCancelling}
+                        className="flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:brightness-110 text-white px-5 py-2.5 rounded-full transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        <span className={`material-symbols-outlined text-[20px] ${isCancelling ? 'animate-spin' : ''}`}>
+                          {isCancelling ? 'sync' : 'cancel'}
+                        </span>
+                        <span className="font-medium text-sm">{isCancelling ? 'Cancelling...' : 'Cancel'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleExecute}
+                        disabled={!activeTab?.query.trim()}
+                        className="flex items-center gap-2 bg-gradient-to-r from-primary to-primary-hover hover:brightness-110 text-white px-5 py-2.5 rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <span className="material-symbols-outlined text-[20px]">play_arrow</span>
+                        <span className="font-medium text-sm">Run Query</span>
+                        <kbd className="bg-white/20 text-white/90 text-[10px] px-1.5 py-0.5 rounded ml-1 font-mono">{navigator.platform?.includes('Mac') ? '⌘E' : 'Ctrl+E'}</kbd>
+                      </button>
+                    )}
                     </div>
                   </div>
                 </div>
@@ -701,6 +747,8 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
             onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
             onAIToggle={() => setAiPanelOpen(!aiPanelOpen)}
             aiPanelOpen={aiPanelOpen}
+            // onCompareToggle={() => setCompareOpen(!compareOpen)} // temporarily disabled
+            // compareOpen={compareOpen} // temporarily disabled
           />
         )}
 
@@ -725,6 +773,61 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
           databaseName={selectedDatabase || undefined}
         />
       </main>
+
+      {/* Explain Plan Overlay */}
+      {explainResult && (
+        <div className="absolute inset-0 z-20 flex flex-col" style={{ left: sidebarCollapsed ? 0 : sidebarWidthPx + 4 }}>
+          <ExplainView jsonData={explainResult} onClose={() => setExplainResult(null)} />
+        </div>
+      )}
+
+      {/* <SchemaCompare open={compareOpen} onClose={() => setCompareOpen(false)} /> temporarily disabled */}
+
+      {/* ER Diagram Overlay */}
+      {erDiagramOpen && !isMongoConnection && !isRedisConnection && (
+        <div className="absolute inset-0 z-20 flex flex-col" style={{ left: sidebarCollapsed ? 0 : sidebarWidthPx + 4 }}>
+          <div className="flex items-center justify-between px-4 py-2 bg-bg-editor border-b border-border-subtle/20 shrink-0">
+            <div className="flex items-center gap-2 text-sm font-medium text-text-main">
+              <span className="material-symbols-outlined text-[16px] text-primary">schema</span>
+              ER Diagram
+              {selectedDatabase && (
+                <span className="text-xs text-text-muted">· {selectedDatabase}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setErDiagramOpen(false)}
+              className="text-text-muted/50 hover:text-text-main transition-colors p-1.5 rounded-md hover:bg-bg-hover/30"
+              aria-label="Close ER Diagram"
+            >
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ERDiagram
+              connectionId={connectionId}
+              tables={tables as TableInfo[]}
+              database={selectedDatabase ?? undefined}
+            />
+          </div>
+        </div>
+      )}
+
+      {queryBuilderOpen && !isMongoConnection && !isRedisConnection && (
+        <div className="absolute inset-0 z-20 flex flex-col" style={{ left: sidebarCollapsed ? 0 : sidebarWidthPx + 4 }}>
+          <QueryBuilder
+            connectionId={connectionId}
+            tables={tables as { name: string }[]}
+            connType={conn?.type as string | undefined}
+            onSendToEditor={(sql) => {
+              const current = activeTab.query
+              updateQuery(current ? current + '\n\n' + sql : sql)
+              setQueryBuilderOpen(false)
+            }}
+            onClose={() => setQueryBuilderOpen(false)}
+          />
+        </div>
+      )}
 
       {/* AI Chat Panel (right sidebar) */}
       <AIChatPanel

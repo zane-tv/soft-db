@@ -1,9 +1,13 @@
 package services
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -163,11 +167,13 @@ func (s *UpdateService) DownloadUpdate() (*DownloadProgress, error) {
 	// Find the right asset for this platform
 	assetName := getAssetName()
 	var downloadURL string
+	var assetFilename string
 	var expectedSize int64
 
 	for _, asset := range release.Assets {
 		if strings.Contains(asset.Name, assetName) {
 			downloadURL = asset.BrowserDownloadURL
+			assetFilename = asset.Name
 			expectedSize = asset.Size
 			break
 		}
@@ -180,6 +186,15 @@ func (s *UpdateService) DownloadUpdate() (*DownloadProgress, error) {
 		}, nil
 	}
 
+	// Find SHA256SUMS.txt asset for checksum verification
+	var checksumURL string
+	for _, asset := range release.Assets {
+		if asset.Name == "SHA256SUMS.txt" {
+			checksumURL = asset.BrowserDownloadURL
+			break
+		}
+	}
+
 	// Download to temp dir
 	tempDir, err := os.MkdirTemp("", "softdb-update-*")
 	if err != nil {
@@ -189,7 +204,7 @@ func (s *UpdateService) DownloadUpdate() (*DownloadProgress, error) {
 	destPath := filepath.Join(tempDir, filepath.Base(downloadURL))
 
 	// Start download in background, emit progress events
-	go s.downloadFile(downloadURL, destPath, expectedSize)
+	go s.downloadFile(downloadURL, destPath, expectedSize, checksumURL, assetFilename)
 
 	return &DownloadProgress{
 		Status:  "downloading",
@@ -212,8 +227,8 @@ func (s *UpdateService) OpenReleasePage(url string) error {
 	return cmd.Start()
 }
 
-// downloadFile downloads a file and emits progress events
-func (s *UpdateService) downloadFile(url, destPath string, expectedSize int64) {
+// downloadFile downloads a file, verifies its SHA256 checksum, and emits progress events.
+func (s *UpdateService) downloadFile(url, destPath string, expectedSize int64, checksumURL, assetFilename string) {
 	emit := func(p DownloadProgress) {
 		if s.app != nil {
 			s.app.Event.Emit("update:progress", p)
@@ -240,7 +255,7 @@ func (s *UpdateService) downloadFile(url, destPath string, expectedSize int64) {
 	defer file.Close()
 
 	var downloaded int64
-	buf := make([]byte, 32*1024) // 32KB chunks
+	buf := make([]byte, 32*1024)
 	lastEmit := time.Now()
 
 	for {
@@ -253,7 +268,6 @@ func (s *UpdateService) downloadFile(url, destPath string, expectedSize int64) {
 			}
 			downloaded += int64(n)
 
-			// Emit progress every 200ms
 			if time.Since(lastEmit) > 200*time.Millisecond {
 				pct := 0
 				if total > 0 {
@@ -277,7 +291,19 @@ func (s *UpdateService) downloadFile(url, destPath string, expectedSize int64) {
 		}
 	}
 
-	// Done — emit ready with file path
+	emit(DownloadProgress{
+		Status:     "verifying",
+		Percent:    100,
+		Downloaded: downloaded,
+		Total:      total,
+	})
+
+	if err := verifyChecksum(destPath, checksumURL, assetFilename); err != nil {
+		os.Remove(destPath)
+		emit(DownloadProgress{Status: "error", Error: fmt.Sprintf("checksum verification failed: %v", err)})
+		return
+	}
+
 	emit(DownloadProgress{
 		Status:     "ready",
 		Percent:    100,
@@ -285,8 +311,71 @@ func (s *UpdateService) downloadFile(url, destPath string, expectedSize int64) {
 		Total:      total,
 	})
 
-	// Auto-open the downloaded file
 	s.openDownloadedFile(destPath)
+}
+
+func verifyChecksum(filePath, checksumURL, assetFilename string) error {
+	if checksumURL == "" {
+		slog.Warn("no SHA256SUMS.txt in release, skipping checksum verification")
+		return nil
+	}
+
+	resp, err := http.Get(checksumURL)
+	if err != nil {
+		slog.Warn("could not download checksum file, skipping verification", "err", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("checksum file returned non-200, skipping verification", "status", resp.StatusCode)
+		return nil
+	}
+
+	expectedHash, err := parseChecksumFile(resp.Body, assetFilename)
+	if err != nil {
+		slog.Warn("could not parse checksum for asset, skipping verification", "asset", assetFilename, "err", err)
+		return nil
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("open downloaded file: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("compute sha256: %w", err)
+	}
+
+	actualHash := hex.EncodeToString(h.Sum(nil))
+	if actualHash != expectedHash {
+		return fmt.Errorf("sha256 mismatch: expected %s, got %s", expectedHash, actualHash)
+	}
+
+	slog.Info("checksum verification passed", "asset", assetFilename)
+	return nil
+}
+
+func parseChecksumFile(r io.Reader, targetFilename string) (string, error) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) != 2 {
+			continue
+		}
+		hash, filename := parts[0], parts[1]
+		filename = strings.TrimPrefix(filename, "*")
+		if filename == targetFilename {
+			return strings.ToLower(hash), nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read checksum file: %w", err)
+	}
+	return "", fmt.Errorf("asset %q not found in checksum file", targetFilename)
 }
 
 // openDownloadedFile opens the downloaded installer/package

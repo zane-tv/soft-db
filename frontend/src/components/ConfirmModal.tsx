@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface ConfirmModalProps {
   open: boolean
@@ -45,12 +46,16 @@ export function ConfirmModal({
   onCancel,
 }: ConfirmModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  useFocusTrap(modalRef, open, onCancel)
+
   if (!open) return null
 
   const v = VARIANTS[variant]
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={title}>
       {/* Backdrop */}
       <div
         ref={overlayRef}
@@ -61,6 +66,7 @@ export function ConfirmModal({
 
       {/* Modal */}
       <div
+        ref={modalRef}
         className="relative w-full max-w-md bg-bg-card rounded-2xl border border-border-subtle shadow-2xl overflow-hidden animate-fade-in-up"
         style={{ animationDuration: '0.2s' }}
       >

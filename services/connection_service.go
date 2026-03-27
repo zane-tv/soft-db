@@ -8,6 +8,7 @@ import (
 
 	"soft-db/internal/driver"
 	"soft-db/internal/store"
+	"soft-db/internal/tunnel"
 
 	"github.com/google/uuid"
 )
@@ -18,7 +19,8 @@ type ConnectionService struct {
 	settingsService *SettingsService
 	drivers         map[string]driver.Driver
 	configs         map[string]driver.ConnectionConfig
-	disconnected    map[string]bool // tracks explicitly disconnected connections
+	tunnels         map[string]*tunnel.SSHTunnel
+	disconnected    map[string]bool
 	mu              sync.RWMutex
 }
 
@@ -29,6 +31,7 @@ func NewConnectionService(s *store.Store, ss *SettingsService) *ConnectionServic
 		settingsService: ss,
 		drivers:         make(map[string]driver.Driver),
 		configs:         make(map[string]driver.ConnectionConfig),
+		tunnels:         make(map[string]*tunnel.SSHTunnel),
 		disconnected:    make(map[string]bool),
 	}
 }
@@ -75,6 +78,10 @@ func (s *ConnectionService) DeleteConnection(id string) error {
 		drv.Disconnect(context.Background())
 		delete(s.drivers, id)
 		delete(s.configs, id)
+	}
+	if tun, ok := s.tunnels[id]; ok {
+		tun.Close()
+		delete(s.tunnels, id)
 	}
 	s.mu.Unlock()
 	return s.store.DeleteConnection(id)
@@ -152,7 +159,9 @@ func (s *ConnectionService) PingAll() map[string]string {
 	return results
 }
 
-// Connect establishes a live connection to a saved database
+// Connect establishes a live connection to a saved database.
+// If SSH tunneling is enabled on the config, a tunnel is started first and
+// the driver connects to the local tunnel port instead of the remote host.
 func (s *ConnectionService) Connect(id string) error {
 	conns, err := s.store.LoadConnections()
 	if err != nil {
@@ -172,8 +181,31 @@ func (s *ConnectionService) Connect(id string) error {
 		return fmt.Errorf("connection not found: %s", id)
 	}
 
+	var activeTunnel *tunnel.SSHTunnel
+	if cfg.SSHEnabled && cfg.Type != driver.SQLite {
+		tun := tunnel.NewSSHTunnel(tunnel.SSHTunnelConfig{
+			Host:           cfg.SSHHost,
+			Port:           cfg.SSHPort,
+			User:           cfg.SSHUser,
+			Password:       cfg.SSHPassword,
+			PrivateKeyPath: cfg.SSHKeyPath,
+			RemoteHost:     cfg.Host,
+			RemotePort:     cfg.Port,
+		})
+		localPort, err := tun.Start()
+		if err != nil {
+			return fmt.Errorf("SSH tunnel: %w", err)
+		}
+		cfg.Host = "127.0.0.1"
+		cfg.Port = localPort
+		activeTunnel = tun
+	}
+
 	drv, err := driver.NewDriver(cfg.Type)
 	if err != nil {
+		if activeTunnel != nil {
+			activeTunnel.Close()
+		}
 		return err
 	}
 
@@ -181,16 +213,24 @@ func (s *ConnectionService) Connect(id string) error {
 	defer cancel()
 
 	if err := drv.Connect(ctx, cfg); err != nil {
+		if activeTunnel != nil {
+			activeTunnel.Close()
+		}
 		return err
 	}
 
 	s.mu.Lock()
-	// Close existing driver if any
 	if old, ok := s.drivers[id]; ok {
 		old.Disconnect(context.Background())
 	}
+	if oldTunnel, ok := s.tunnels[id]; ok {
+		oldTunnel.Close()
+	}
 	s.drivers[id] = drv
 	s.configs[id] = cfg
+	if activeTunnel != nil {
+		s.tunnels[id] = activeTunnel
+	}
 	delete(s.disconnected, id)
 	s.mu.Unlock()
 
@@ -210,6 +250,10 @@ func (s *ConnectionService) Disconnect(id string) error {
 	err := drv.Disconnect(context.Background())
 	delete(s.drivers, id)
 	delete(s.configs, id)
+	if tun, ok := s.tunnels[id]; ok {
+		tun.Close()
+		delete(s.tunnels, id)
+	}
 	s.disconnected[id] = true
 	return err
 }

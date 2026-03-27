@@ -175,6 +175,20 @@ func (d *MongoDriver) executeSingle(ctx context.Context, query string, start tim
 		return d.executeInsert(ctx, coll, cmd, start)
 	case "delete":
 		return d.executeDelete(ctx, coll, cmd, start)
+	case "updateone":
+		return d.executeUpdateOne(ctx, coll, cmd, start)
+	case "updatemany":
+		return d.executeUpdateMany(ctx, coll, cmd, start)
+	case "aggregate":
+		return d.executeAggregate(ctx, coll, cmd, start)
+	case "distinct":
+		return d.executeDistinct(ctx, coll, cmd, start)
+	case "createindex":
+		return d.executeCreateIndex(ctx, coll, cmd, start)
+	case "dropindex":
+		return d.executeDropIndex(ctx, coll, cmd, start)
+	case "explain":
+		return d.executeExplain(ctx, coll, cmd, start)
 	default:
 		return &QueryResult{Error: fmt.Sprintf("unsupported action: %s", action), ExecutionTime: measureTime(start)}, nil
 	}
@@ -289,6 +303,274 @@ func (d *MongoDriver) executeDelete(ctx context.Context, coll *mongo.Collection,
 
 	return &QueryResult{
 		AffectedRows:  result.DeletedCount,
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MongoDriver) executeUpdateOne(ctx context.Context, coll *mongo.Collection, cmd bson.M, start time.Time) (*QueryResult, error) {
+	filter, _ := cmd["filter"].(bson.M)
+	if filter == nil {
+		filter = bson.M{}
+	}
+	update, _ := cmd["update"].(bson.M)
+	if update == nil {
+		return &QueryResult{Error: "missing 'update' for updateOne", ExecutionTime: measureTime(start)}, nil
+	}
+
+	result, err := coll.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	return &QueryResult{
+		Columns: []ColumnMeta{
+			{Name: "matchedCount", Type: "int64"},
+			{Name: "modifiedCount", Type: "int64"},
+			{Name: "upsertedCount", Type: "int64"},
+		},
+		Rows: []map[string]interface{}{{
+			"matchedCount":  result.MatchedCount,
+			"modifiedCount": result.ModifiedCount,
+			"upsertedCount": result.UpsertedCount,
+		}},
+		RowCount:      1,
+		AffectedRows:  result.ModifiedCount,
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MongoDriver) executeUpdateMany(ctx context.Context, coll *mongo.Collection, cmd bson.M, start time.Time) (*QueryResult, error) {
+	filter, _ := cmd["filter"].(bson.M)
+	if filter == nil {
+		filter = bson.M{}
+	}
+	update, _ := cmd["update"].(bson.M)
+	if update == nil {
+		return &QueryResult{Error: "missing 'update' for updateMany", ExecutionTime: measureTime(start)}, nil
+	}
+
+	result, err := coll.UpdateMany(ctx, filter, update)
+	if err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	return &QueryResult{
+		Columns: []ColumnMeta{
+			{Name: "matchedCount", Type: "int64"},
+			{Name: "modifiedCount", Type: "int64"},
+			{Name: "upsertedCount", Type: "int64"},
+		},
+		Rows: []map[string]interface{}{{
+			"matchedCount":  result.MatchedCount,
+			"modifiedCount": result.ModifiedCount,
+			"upsertedCount": result.UpsertedCount,
+		}},
+		RowCount:      1,
+		AffectedRows:  result.ModifiedCount,
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MongoDriver) executeAggregate(ctx context.Context, coll *mongo.Collection, cmd bson.M, start time.Time) (*QueryResult, error) {
+	pipeline, _ := cmd["pipeline"].(bson.A)
+	if pipeline == nil {
+		return &QueryResult{Error: "missing 'pipeline' array for aggregate", ExecutionTime: measureTime(start)}, nil
+	}
+
+	cursor, err := coll.Aggregate(ctx, pipeline)
+	if err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+	defer cursor.Close(ctx)
+
+	var results []map[string]interface{}
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		row := make(map[string]interface{})
+		for k, v := range doc {
+			row[k] = fmt.Sprintf("%v", v)
+		}
+		results = append(results, row)
+	}
+
+	var columns []ColumnMeta
+	if len(results) > 0 {
+		for k := range results[0] {
+			columns = append(columns, ColumnMeta{Name: k, Type: "mixed"})
+		}
+	}
+
+	return &QueryResult{
+		Columns:       columns,
+		Rows:          results,
+		RowCount:      int64(len(results)),
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MongoDriver) executeDistinct(ctx context.Context, coll *mongo.Collection, cmd bson.M, start time.Time) (*QueryResult, error) {
+	field, _ := cmd["field"].(string)
+	if field == "" {
+		return &QueryResult{Error: "missing 'field' for distinct", ExecutionTime: measureTime(start)}, nil
+	}
+
+	filter, _ := cmd["filter"].(bson.M)
+	if filter == nil {
+		filter = bson.M{}
+	}
+
+	dr := coll.Distinct(ctx, field, filter)
+	var values []interface{}
+	if err := dr.Decode(&values); err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	var rows []map[string]interface{}
+	for _, v := range values {
+		rows = append(rows, map[string]interface{}{field: fmt.Sprintf("%v", v)})
+	}
+
+	return &QueryResult{
+		Columns:       []ColumnMeta{{Name: field, Type: "mixed"}},
+		Rows:          rows,
+		RowCount:      int64(len(rows)),
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MongoDriver) executeCreateIndex(ctx context.Context, coll *mongo.Collection, cmd bson.M, start time.Time) (*QueryResult, error) {
+	keys, _ := cmd["keys"].(bson.M)
+	if keys == nil {
+		return &QueryResult{Error: "missing 'keys' for createIndex", ExecutionTime: measureTime(start)}, nil
+	}
+
+	var keysD bson.D
+	for k, v := range keys {
+		keysD = append(keysD, bson.E{Key: k, Value: v})
+	}
+
+	model := mongo.IndexModel{Keys: keysD}
+
+	if idxOpts, ok := cmd["options"].(bson.M); ok {
+		builder := options.Index()
+		if name, ok := idxOpts["name"].(string); ok {
+			builder.SetName(name)
+		}
+		if unique, ok := idxOpts["unique"].(bool); ok {
+			builder.SetUnique(unique)
+		}
+		if sparse, ok := idxOpts["sparse"].(bool); ok {
+			builder.SetSparse(sparse)
+		}
+		model.Options = builder
+	}
+
+	name, err := coll.Indexes().CreateOne(ctx, model)
+	if err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	return &QueryResult{
+		Columns:       []ColumnMeta{{Name: "indexName", Type: "string"}},
+		Rows:          []map[string]interface{}{{"indexName": name}},
+		RowCount:      1,
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MongoDriver) executeDropIndex(ctx context.Context, coll *mongo.Collection, cmd bson.M, start time.Time) (*QueryResult, error) {
+	name, _ := cmd["index"].(string)
+	if name == "" {
+		return &QueryResult{Error: "missing 'index' name for dropIndex", ExecutionTime: measureTime(start)}, nil
+	}
+
+	if err := coll.Indexes().DropOne(ctx, name); err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	return &QueryResult{
+		Columns:       []ColumnMeta{{Name: "result", Type: "string"}},
+		Rows:          []map[string]interface{}{{"result": fmt.Sprintf("index %q dropped", name)}},
+		RowCount:      1,
+		ExecutionTime: measureTime(start),
+	}, nil
+}
+
+func (d *MongoDriver) executeExplain(ctx context.Context, coll *mongo.Collection, cmd bson.M, start time.Time) (*QueryResult, error) {
+	collection, _ := cmd["collection"].(string)
+
+	innerAction, _ := cmd["innerAction"].(string)
+	if innerAction == "" {
+		innerAction = "find"
+	}
+
+	filter, _ := cmd["filter"].(bson.M)
+	if filter == nil {
+		filter = bson.M{}
+	}
+
+	var innerCmd bson.D
+	switch strings.ToLower(innerAction) {
+	case "find":
+		innerCmd = bson.D{
+			{Key: "find", Value: collection},
+			{Key: "filter", Value: filter},
+		}
+	case "count":
+		innerCmd = bson.D{
+			{Key: "count", Value: collection},
+			{Key: "query", Value: filter},
+		}
+	case "aggregate":
+		pipeline, _ := cmd["pipeline"].(bson.A)
+		if pipeline == nil {
+			pipeline = bson.A{}
+		}
+		innerCmd = bson.D{
+			{Key: "aggregate", Value: collection},
+			{Key: "pipeline", Value: pipeline},
+			{Key: "cursor", Value: bson.M{}},
+		}
+	default:
+		innerCmd = bson.D{
+			{Key: "find", Value: collection},
+			{Key: "filter", Value: filter},
+		}
+	}
+
+	verbosity, _ := cmd["verbosity"].(string)
+	if verbosity == "" {
+		verbosity = "queryPlanner"
+	}
+
+	explainCmd := bson.D{
+		{Key: "explain", Value: innerCmd},
+		{Key: "verbosity", Value: verbosity},
+	}
+
+	db := d.client.Database(d.dbName)
+	var result bson.M
+	if err := db.RunCommand(ctx, explainCmd).Decode(&result); err != nil {
+		return &QueryResult{Error: err.Error(), ExecutionTime: measureTime(start)}, nil
+	}
+
+	row := make(map[string]interface{})
+	for k, v := range result {
+		row[k] = fmt.Sprintf("%v", v)
+	}
+
+	var columns []ColumnMeta
+	for k := range row {
+		columns = append(columns, ColumnMeta{Name: k, Type: "mixed"})
+	}
+
+	return &QueryResult{
+		Columns:       columns,
+		Rows:          []map[string]interface{}{row},
+		RowCount:      1,
 		ExecutionTime: measureTime(start),
 	}, nil
 }

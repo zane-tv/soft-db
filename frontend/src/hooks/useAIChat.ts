@@ -190,6 +190,11 @@ export function useAIChat(connectionId: string) {
       await AIService.SendMessage(connectionId, message, model ?? '')
     } catch (e) {
       setIsStreaming(false)
+      // Rollback the optimistically-added user message
+      queryClient.setQueryData(
+        ['ai', 'chat', connectionId],
+        (old: ChatMessage[] | undefined) => (old ?? []).filter(m => m !== userMessage)
+      )
       setError({ type: 'error', message: String(e), code: 0 })
     }
   }, [connectionId, queryClient])

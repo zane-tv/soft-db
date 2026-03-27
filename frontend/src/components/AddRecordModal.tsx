@@ -273,11 +273,16 @@ function FieldInput({ type, value, defaultValue, disabled, onChange }: {
 // ─── Helpers ───
 function isAutoIncrement(col: ColumnInfo): boolean {
   const extra = (col.extra || '').toLowerCase()
+  const defaultVal = (col.defaultValue || '').toLowerCase()
+
+  if (extra.includes('auto_increment') || extra.includes('autoincrement')) return true
+  if (defaultVal.includes('nextval(') || defaultVal.includes('autoincrement')) return true
+
   const type = col.type.toLowerCase()
-  return extra.includes('auto_increment') ||
-    extra.includes('autoincrement') ||
-    type.includes('serial') ||
-    type === 'integer' // SQLite INTEGER PRIMARY KEY is auto-increment
+  if (type.includes('serial')) return true
+  if (type === 'integer' && col.primaryKey && !col.defaultValue) return true
+
+  return false
 }
 
 function parseFieldValue(value: unknown, type: string): unknown {

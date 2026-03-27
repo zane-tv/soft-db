@@ -81,7 +81,12 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         {/* Backdrop */}
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          aria-label="Close connection picker"
+          onClick={onClose}
+        />
 
         {/* Modal */}
         <div className="relative w-full max-w-[900px] max-h-[85vh] bg-bg-card rounded-xl border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up mx-4">
@@ -90,6 +95,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-text-main">{t('connection.open')}</h2>
               <button
+                type="button"
                 onClick={onClose}
                 className="p-1 rounded-md text-text-muted hover:text-text-main hover:bg-white/5 transition-colors"
               >
@@ -103,17 +109,17 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
                 search
               </span>
               <input
-                className="w-full rounded-lg border border-border-subtle bg-bg-main py-2.5 pl-9 pr-3 text-sm text-text-main placeholder:text-text-muted focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                className="w-full rounded-lg border border-border-subtle bg-bg-app py-2.5 pl-9 pr-3 text-sm text-text-main placeholder:text-text-muted focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
                 placeholder={t('connection.searchPlaceholder')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                autoFocus
               />
             </div>
 
             {/* DB Type Filter Chips */}
             <div className="flex items-center gap-1.5 mt-3 flex-wrap">
               <button
+                type="button"
                 onClick={() => setTypeFilter(null)}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap transition-all duration-200 ${
                   typeFilter === null
@@ -126,6 +132,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
               </button>
               {DB_CHIP_LIST.map((db) => (
                 <button
+                  type="button"
                   key={db.value}
                   onClick={() => setTypeFilter(typeFilter === db.value ? null : db.value)}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap transition-all duration-200 ${
@@ -168,10 +175,11 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
 
                 return (
                   <button
+                    type="button"
                     key={conn.id}
                     onClick={() => handlePick(conn.id)}
                     disabled={isConnecting}
-                    className={`group relative flex flex-col justify-between h-[130px] p-4 rounded-xl bg-bg-main border text-left transition-all duration-200
+                    className={`group relative flex flex-col justify-between h-[130px] p-4 rounded-xl bg-bg-app border text-left transition-all duration-200
                       ${isOpen
                         ? 'border-primary/30 ring-1 ring-primary/20'
                         : 'border-border-subtle hover:border-primary/20 hover:bg-bg-hover'
@@ -240,6 +248,7 @@ export function ConnectionPickerModal({ open, onClose, onSelect, openTabIds }: C
 
               {/* Add New Connection Card */}
               <button
+                type="button"
                 onClick={() => setShowNewModal(true)}
                 className="group flex flex-col items-center justify-center h-[130px] p-4 rounded-xl border border-dashed border-border-subtle hover:border-primary/40 cursor-pointer hover:bg-bg-hover/40 transition-all duration-200"
               >

@@ -58,3 +58,27 @@ tasks:
     summary: Builds and runs the Docker image
     cmds:
       - task: common:run:docker
+
+  test:
+    summary: Runs backend tests
+    cmds:
+      - go test ./...
+
+  test:race:
+    summary: Runs backend tests with race detection
+    cmds:
+      - go test -race ./...
+
+  coverage:
+    summary: Generates backend test coverage
+    cmds:
+      - go test ./... -coverprofile=coverage.out
+
+  lint:
+    summary: Runs frontend type checks
+    cmds:
+      - cd frontend && npx tsc --noEmit
+
+  check:
+    summary: Runs test and lint checks
+    deps: [test, lint]

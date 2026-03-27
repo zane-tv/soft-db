@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { useTheme, ThemeOption, type ThemeId } from '@/hooks/useTheme'
 import { useSettingsContext, type AppSettings } from '@/hooks/useSettings'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
@@ -24,16 +25,19 @@ function getSections(t: (key: TranslationKey) => string): { id: SectionId; label
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const overlayRef = useRef<HTMLButtonElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('general')
   const { settings, updateSetting } = useSettingsContext()
   const { theme, setTheme, themes } = useTheme()
   const { t } = useTranslation((settings.language as Language) || 'en')
   const sections = getSections(t)
 
+  useFocusTrap(modalRef, open, onClose)
+
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
       {/* Backdrop */}
       <button
         type="button"
@@ -46,13 +50,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
       {/* Modal */}
       <div
+        ref={modalRef}
         className="relative w-full max-w-[720px] h-[560px] bg-bg-card rounded-2xl border border-border-subtle flex overflow-hidden animate-fade-in-up"
         style={{ animationDuration: '0.3s' }}
       >
         {/* Sidebar */}
         <div className="w-[200px] bg-bg-app border-r border-border-subtle/50 flex flex-col shrink-0">
           <div className="px-5 pt-5 pb-4">
-            <h2 className="text-lg font-bold text-text-main">{t('settings.title')}</h2>
+            <h2 id="settings-modal-title" className="text-lg font-bold text-text-main">{t('settings.title')}</h2>
             <p className="text-xs text-text-muted mt-0.5">SoftDB</p>
           </div>
           <nav className="flex-1 px-2 pb-4 space-y-0.5 overflow-y-auto">
@@ -86,6 +91,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <button
               type="button"
               onClick={onClose}
+              aria-label="Close settings"
               className="text-text-muted hover:text-text-main p-1.5 rounded-lg hover:bg-white/5 transition-colors duration-200"
             >
               <span className="material-symbols-outlined text-[20px]">close</span>
@@ -242,7 +248,7 @@ function SelectInput({
       onChange={(e) => onChange(e.target.value)}
       className="bg-bg-app border border-border-subtle rounded-lg px-3 py-1.5 text-sm text-text-main outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors cursor-pointer appearance-none pr-8"
       style={{
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3z'/%3E%3C/svg%3E")`,
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a1a1aa' d='M3 5l3 3 3-3z'/%3E%3C/svg%3E")`,
         backgroundRepeat: 'no-repeat',
         backgroundPosition: 'right 8px center',
       }}

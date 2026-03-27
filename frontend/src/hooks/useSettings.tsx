@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import * as SettingsService from '../../bindings/soft-db/services/settingsservice'
 import { AppSettings } from '../../bindings/soft-db/services/models'
 
@@ -80,11 +80,26 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const mutation = useUpdateSettings()
 
   const current = settings ?? DEFAULT_SETTINGS
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRef = useRef<AppSettings | null>(null)
 
-  const updateSettings = (s: AppSettings) => mutation.mutate(s)
+  const flushSave = useCallback((s: AppSettings) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    pendingRef.current = s
+    debounceRef.current = setTimeout(() => {
+      if (pendingRef.current) {
+        mutation.mutate(pendingRef.current)
+        pendingRef.current = null
+      }
+      debounceRef.current = null
+    }, 300)
+  }, [mutation])
+
+  const updateSettings = (s: AppSettings) => flushSave(s)
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
-    mutation.mutate({ ...current, [key]: value })
+    const next = { ...current, ...pendingRef.current, [key]: value }
+    flushSave(next)
   }
 
   // Sync <html lang> attribute for CSS font switching

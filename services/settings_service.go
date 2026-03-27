@@ -40,6 +40,12 @@ type AppSettings struct {
 	DateFormat   string `json:"dateFormat"`
 	ExportFormat string `json:"exportFormat"`
 	CsvDelimiter string `json:"csvDelimiter"`
+
+	// AI Provider
+	AIProvider string `json:"aiProvider"` // "openai" | "anthropic" | "ollama"
+	AIAPIKey   string `json:"aiApiKey"`
+	AIBaseURL  string `json:"aiBaseUrl"`
+	AIModel    string `json:"aiModel"`
 }
 
 // DefaultSettings returns the default settings
@@ -78,6 +84,10 @@ func DefaultSettings() AppSettings {
 		DateFormat:   "iso",
 		ExportFormat: "csv",
 		CsvDelimiter: ",",
+
+		// AI Provider
+		AIProvider: "openai",
+		AIModel:    "gpt-5.3-codex",
 	}
 }
 

@@ -133,33 +133,126 @@ func (s *EditService) UpdateCell(connectionID string, req CellUpdateRequest) (*C
 	return result, nil
 }
 
-// BatchUpdateCells applies multiple cell edits, stopping on first error
+// BatchUpdateCells applies multiple cell edits atomically when the driver
+// supports transactions (all-or-nothing). Falls back to per-row execution
+// for non-transactional drivers (e.g. MongoDB).
 func (s *EditService) BatchUpdateCells(connectionID string, reqs []CellUpdateRequest) (*BatchUpdateResult, error) {
 	batch := &BatchUpdateResult{
 		Results: make([]CellUpdateResult, 0, len(reqs)),
 	}
 
-	for _, req := range reqs {
-		result, err := s.UpdateCell(connectionID, req)
-		if err != nil {
-			batch.Results = append(batch.Results, CellUpdateResult{
-				GeneratedSQL: "",
-				Success:      false,
-				Error:        err.Error(),
-			})
-			batch.TotalFailed++
-			// Stop on first error to avoid partial inconsistent state
-			break
+	if len(reqs) == 0 {
+		return batch, nil
+	}
+
+	drv, err := s.connService.GetDriver(connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try transactional path for all-or-nothing semantics
+	txDrv, canTx := drv.(driver.TransactionalDriver)
+	if !canTx {
+		// Non-transactional fallback (e.g. MongoDB): existing per-row behavior
+		for _, req := range reqs {
+			result, err := s.UpdateCell(connectionID, req)
+			if err != nil {
+				batch.Results = append(batch.Results, CellUpdateResult{
+					GeneratedSQL: "",
+					Success:      false,
+					Error:        err.Error(),
+				})
+				batch.TotalFailed++
+				break
+			}
+			batch.Results = append(batch.Results, *result)
+			if result.Success {
+				batch.TotalSuccess++
+			} else {
+				batch.TotalFailed++
+				break
+			}
 		}
-		batch.Results = append(batch.Results, *result)
-		if result.Success {
-			batch.TotalSuccess++
-		} else {
-			batch.TotalFailed++
-			// Stop on first error
-			break
+		return batch, nil
+	}
+
+	// ── Transactional path ──
+	dbType := drv.Type()
+
+	// Pre-validate all requests before opening a transaction
+	for i, req := range reqs {
+		if req.Table == "" || req.Column == "" || len(req.PkColumns) == 0 {
+			batch.Results = append(batch.Results, CellUpdateResult{
+				Success: false,
+				Error:   fmt.Sprintf("row %d: missing required fields: table, column, pkColumns", i+1),
+			})
+			batch.TotalFailed = 1
+			return batch, nil
 		}
 	}
+
+	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	tx, err := txDrv.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback() // no-op after successful commit
+
+	type pendingUpdate struct {
+		displaySQL string
+		execMs     float64
+		affected   int64
+	}
+	pending := make([]pendingUpdate, 0, len(reqs))
+
+	for i, req := range reqs {
+		displaySQL, execSQL, args := buildParamUpdateSQL(req, dbType)
+
+		start := time.Now()
+		res, execErr := tx.ExecContext(ctx, execSQL, args...)
+		execMs := float64(time.Since(start).Microseconds()) / 1000.0
+
+		if execErr != nil {
+			batch.Results = append(batch.Results, CellUpdateResult{
+				GeneratedSQL: displaySQL,
+				Success:      false,
+				Error:        fmt.Sprintf("row %d of %d failed: %s (all updates rolled back)", i+1, len(reqs), execErr.Error()),
+			})
+			batch.TotalFailed = 1
+			return batch, nil // defer rollback
+		}
+
+		affected, _ := res.RowsAffected()
+		pending = append(pending, pendingUpdate{displaySQL, execMs, affected})
+	}
+
+	if err := tx.Commit(); err != nil {
+		batch.Results = append(batch.Results, CellUpdateResult{
+			Success: false,
+			Error:   fmt.Sprintf("commit failed, all %d updates rolled back: %s", len(reqs), err.Error()),
+		})
+		batch.TotalFailed = len(reqs)
+		return batch, nil
+	}
+
+	// Record results and history only after successful commit
+	for _, p := range pending {
+		batch.Results = append(batch.Results, CellUpdateResult{
+			GeneratedSQL: p.displaySQL,
+			Success:      true,
+		})
+		s.store.AddHistory(store.HistoryEntry{
+			ConnectionID:  connectionID,
+			QueryText:     p.displaySQL,
+			Status:        "mutation",
+			ExecutionTime: p.execMs,
+			RowsAffected:  p.affected,
+		})
+	}
+	batch.TotalSuccess = len(pending)
 
 	return batch, nil
 }
@@ -250,7 +343,8 @@ type DeleteResult struct {
 	Error        string   `json:"error,omitempty"`
 }
 
-// DeleteRows deletes one or more rows by their primary key values
+// DeleteRows deletes one or more rows by their primary key values.
+// Uses a transaction for all-or-nothing semantics when the driver supports it.
 func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList []map[string]interface{}) (*DeleteResult, error) {
 	if table == "" || len(pkValuesList) == 0 {
 		return &DeleteResult{Success: false, Error: "missing table or pkValues"}, nil
@@ -267,6 +361,90 @@ func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	txDrv, canTx := drv.(driver.TransactionalDriver)
+	if !canTx {
+		return s.deleteRowsNonTx(ctx, drv, connectionID, table, dbType, pkValuesList)
+	}
+
+	// ── Transactional path ──
+	tx, err := txDrv.BeginTx(ctx, nil)
+	if err != nil {
+		return &DeleteResult{Success: false, Error: fmt.Sprintf("begin transaction: %s", err.Error())}, nil
+	}
+	defer tx.Rollback() // no-op after successful commit
+
+	result := &DeleteResult{
+		GeneratedSQL: make([]string, 0, len(pkValuesList)),
+	}
+
+	type pendingDelete struct {
+		displaySQL string
+		execMs     float64
+		affected   int64
+	}
+	pending := make([]pendingDelete, 0, len(pkValuesList))
+	var totalDeleted int64
+
+	for i, pkValues := range pkValuesList {
+		var args []interface{}
+		whereParts := make([]string, 0, len(pkValues))
+		displayWhere := make([]string, 0, len(pkValues))
+		argIdx := 1
+
+		for col, val := range pkValues {
+			whereParts = append(whereParts, fmt.Sprintf("%s = %s", quoteIdent(col, dbType), placeholder(dbType, argIdx)))
+			displayWhere = append(displayWhere, fmt.Sprintf("%s = %s", quoteIdent(col, dbType), formatValue(val)))
+			args = append(args, val)
+			argIdx++
+		}
+
+		execSQL := fmt.Sprintf("DELETE FROM %s WHERE %s",
+			quoteIdent(table, dbType),
+			strings.Join(whereParts, " AND "),
+		)
+		displaySQL := fmt.Sprintf("DELETE FROM %s WHERE %s",
+			quoteIdent(table, dbType),
+			strings.Join(displayWhere, " AND "),
+		)
+		result.GeneratedSQL = append(result.GeneratedSQL, displaySQL)
+
+		start := time.Now()
+		res, execErr := tx.ExecContext(ctx, execSQL, args...)
+		execMs := float64(time.Since(start).Microseconds()) / 1000.0
+
+		if execErr != nil {
+			result.Error = fmt.Sprintf("row %d of %d failed: %s (all deletes rolled back)", i+1, len(pkValuesList), execErr.Error())
+			return result, nil
+		}
+
+		affected, _ := res.RowsAffected()
+		totalDeleted += affected
+		pending = append(pending, pendingDelete{displaySQL, execMs, affected})
+	}
+
+	if err := tx.Commit(); err != nil {
+		result.Error = fmt.Sprintf("commit failed, all %d deletes rolled back: %s", len(pkValuesList), err.Error())
+		return result, nil
+	}
+
+	// Record history only after successful commit
+	for _, p := range pending {
+		s.store.AddHistory(store.HistoryEntry{
+			ConnectionID:  connectionID,
+			QueryText:     p.displaySQL,
+			Status:        "mutation",
+			ExecutionTime: p.execMs,
+			RowsAffected:  p.affected,
+		})
+	}
+
+	result.TotalDeleted = totalDeleted
+	result.Success = true
+	return result, nil
+}
+
+// deleteRowsNonTx is the non-transactional fallback for DeleteRows (e.g. MongoDB).
+func (s *EditService) deleteRowsNonTx(ctx context.Context, drv driver.Driver, connectionID, table string, dbType driver.DatabaseType, pkValuesList []map[string]interface{}) (*DeleteResult, error) {
 	result := &DeleteResult{
 		GeneratedSQL: make([]string, 0, len(pkValuesList)),
 	}
@@ -308,7 +486,6 @@ func (s *EditService) DeleteRows(connectionID string, table string, pkValuesList
 
 		totalDeleted += qr.AffectedRows
 
-		// Record in history
 		s.store.AddHistory(store.HistoryEntry{
 			ConnectionID:  connectionID,
 			QueryText:     displaySQL,

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -30,8 +32,7 @@ func (d *PostgresDriver) Connect(ctx context.Context, cfg ConnectionConfig) erro
 		dbName = "postgres"
 	}
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		cfg.Username, cfg.Password, cfg.Host, cfg.Port, dbName, sslMode)
+	dsn := postgresDSN(cfg.Username, cfg.Password, cfg.Host, cfg.Port, dbName, sslMode)
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -251,6 +252,13 @@ func (d *PostgresDriver) Functions(ctx context.Context) ([]FunctionInfo, error) 
 
 func (d *PostgresDriver) Type() DatabaseType { return PostgreSQL }
 func (d *PostgresDriver) IsConnected() bool  { return d.db != nil }
+
+func (d *PostgresDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	return d.db.BeginTx(ctx, opts)
+}
 
 func (d *PostgresDriver) GetStructureChangeCapabilities(ctx context.Context) (*StructureChangeCapabilities, error) {
 	return &StructureChangeCapabilities{
@@ -488,8 +496,7 @@ func (d *PostgresDriver) connectToDB(ctx context.Context, database string) (*sql
 		sslMode = "disable"
 	}
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		d.config.Username, d.config.Password, d.config.Host, d.config.Port, database, sslMode)
+	dsn := postgresDSN(d.config.Username, d.config.Password, d.config.Host, d.config.Port, database, sslMode)
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -506,4 +513,153 @@ func (d *PostgresDriver) connectToDB(ctx context.Context, database string) (*sql
 	}
 
 	return db, nil
+}
+
+// ─── IndexIntrospector implementation ───
+
+var _ IndexIntrospector = (*PostgresDriver)(nil)
+
+func (d *PostgresDriver) GetIndexes(schema, table string) ([]IndexInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if schema == "" {
+		schema = "public"
+	}
+
+	query := `
+		SELECT i.relname, ix.indisunique, ix.indisprimary, a.attname
+		FROM pg_class t
+		JOIN pg_index ix ON t.oid = ix.indrelid
+		JOIN pg_class i ON ix.indexrelid = i.oid
+		JOIN pg_namespace n ON t.relnamespace = n.oid
+		JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, pos) ON TRUE
+		JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+		WHERE n.nspname = $1 AND t.relname = $2 AND k.attnum > 0
+		ORDER BY i.relname, k.pos`
+
+	rows, err := d.db.Query(query, schema, table)
+	if err != nil {
+		return nil, fmt.Errorf("get indexes %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	order := []string{}
+	byName := map[string]*IndexInfo{}
+	for rows.Next() {
+		var name, col string
+		var isUnique, isPrimary bool
+		if err := rows.Scan(&name, &isUnique, &isPrimary, &col); err != nil {
+			return nil, err
+		}
+		if _, ok := byName[name]; !ok {
+			byName[name] = &IndexInfo{Name: name, TableName: table, IsUnique: isUnique, IsPrimary: isPrimary}
+			order = append(order, name)
+		}
+		byName[name].Columns = append(byName[name].Columns, col)
+	}
+	result := make([]IndexInfo, 0, len(order))
+	for _, name := range order {
+		result = append(result, *byName[name])
+	}
+	return result, nil
+}
+
+// ─── ForeignKeyIntrospector implementation ───
+
+var _ ForeignKeyIntrospector = (*PostgresDriver)(nil)
+
+func (d *PostgresDriver) GetForeignKeys(schema, table string) ([]ForeignKeyInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if schema == "" {
+		schema = "public"
+	}
+
+	query := `
+		SELECT
+			tc.constraint_name,
+			kcu.column_name,
+			ccu.table_name AS referenced_table,
+			ccu.column_name AS referenced_column,
+			rc.update_rule,
+			rc.delete_rule
+		FROM information_schema.table_constraints tc
+		JOIN information_schema.key_column_usage kcu
+			ON tc.constraint_name = kcu.constraint_name
+			AND tc.constraint_schema = kcu.constraint_schema
+		JOIN information_schema.constraint_column_usage ccu
+			ON tc.constraint_name = ccu.constraint_name
+			AND tc.constraint_schema = ccu.constraint_schema
+		JOIN information_schema.referential_constraints rc
+			ON tc.constraint_name = rc.constraint_name
+			AND tc.constraint_schema = rc.constraint_schema
+		WHERE tc.constraint_type = 'FOREIGN KEY'
+			AND tc.table_schema = $1
+			AND tc.table_name = $2
+		ORDER BY tc.constraint_name, kcu.ordinal_position`
+
+	rows, err := d.db.Query(query, schema, table)
+	if err != nil {
+		return nil, fmt.Errorf("get foreign keys %q: %w", table, err)
+	}
+	defer rows.Close()
+
+	var fks []ForeignKeyInfo
+	for rows.Next() {
+		var fk ForeignKeyInfo
+		fk.TableName = table
+		if err := rows.Scan(&fk.Name, &fk.ColumnName, &fk.ReferencedTable, &fk.ReferencedColumn, &fk.OnUpdate, &fk.OnDelete); err != nil {
+			return nil, err
+		}
+		fks = append(fks, fk)
+	}
+	return fks, nil
+}
+
+// ─── SchemaIntrospector implementation ───
+
+var _ SchemaIntrospector = (*PostgresDriver)(nil)
+
+func (d *PostgresDriver) GetSchemas(_ string) ([]string, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	rows, err := d.db.Query(`
+		SELECT schema_name
+		FROM information_schema.schemata
+		WHERE schema_name NOT LIKE 'pg_%'
+			AND schema_name != 'information_schema'
+		ORDER BY schema_name`)
+	if err != nil {
+		return nil, fmt.Errorf("get schemas: %w", err)
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, name)
+	}
+	return schemas, nil
+}
+
+func postgresDSN(username, password, host string, port int, database, sslMode string) string {
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(username, password),
+		Host:   net.JoinHostPort(host, fmt.Sprint(port)),
+		Path:   database,
+	}
+
+	q := u.Query()
+	q.Set("sslmode", sslMode)
+	u.RawQuery = q.Encode()
+
+	return u.String()
 }

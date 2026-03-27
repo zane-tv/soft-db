@@ -1,3 +1,6 @@
+/* eslint-disable react-dom/no-dangerously-set-innerhtml */
+
+import DOMPurify from 'dompurify'
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react'
 import { useAIChat, useAuth, useModelSelection, type AIError } from '@/hooks/useAIChat'
 
@@ -33,11 +36,30 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const isResizing = useRef(false)
+  const latestWidthRef = useRef(panelWidth)
 
   // Auto-scroll to bottom
   useEffect(() => {
+    void messages.length
+    void streamingContent
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
+  }, [messages.length, streamingContent])
+
+  const handleResizeKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+      return
+    }
+
+    e.preventDefault()
+
+    setPanelWidth(prev => {
+      const delta = e.key === 'ArrowLeft' ? 16 : -16
+      const next = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, prev + delta))
+      latestWidthRef.current = next
+      localStorage.setItem(STORAGE_KEY, next.toString())
+      return next
+    })
+  }, [])
 
   // Handle prefill text (from Attach to AI)
   useEffect(() => {
@@ -53,23 +75,23 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
     if (visible) inputRef.current?.focus()
   }, [visible])
 
-  // Resize handlers
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     isResizing.current = true
     const startX = e.clientX
-    const startWidth = panelWidth
+    const startWidth = latestWidthRef.current
 
     const onMove = (ev: MouseEvent) => {
       if (!isResizing.current) return
-      const delta = startX - ev.clientX // moving left = wider
+      const delta = startX - ev.clientX
       const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth + delta))
+      latestWidthRef.current = newWidth
       setPanelWidth(newWidth)
     }
 
     const onUp = () => {
       isResizing.current = false
-      localStorage.setItem(STORAGE_KEY, panelWidth.toString())
+      localStorage.setItem(STORAGE_KEY, latestWidthRef.current.toString())
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
       document.body.style.cursor = ''
@@ -80,12 +102,7 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
     document.addEventListener('mouseup', onUp)
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
-  }, [panelWidth])
-
-  // Save width on change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, panelWidth.toString())
-  }, [panelWidth])
+  }, [])
 
   // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -123,7 +140,13 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
     >
       <div className="ai-chat-panel-inner" style={{ minWidth: panelWidth }}>
       {/* Resize handle */}
-      <div className="ai-resize-handle" onMouseDown={handleResizeStart} />
+      <button
+        type="button"
+        className="ai-resize-handle"
+        onMouseDown={handleResizeStart}
+        onKeyDown={handleResizeKeyDown}
+        aria-label="Resize AI chat panel"
+      />
 
       {/* Header */}
       <div className="ai-chat-header">
@@ -161,10 +184,10 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
               </optgroup>
             </select>
           )}
-          <button className="ai-icon-btn" onClick={() => clearChat()} title="Clear chat">
+          <button type="button" className="ai-icon-btn" onClick={() => clearChat()} title="Clear chat">
             <span className="material-symbols-outlined text-[14px]">delete_sweep</span>
           </button>
-          <button className="ai-icon-btn" onClick={onClose} title="Close panel">
+          <button type="button" className="ai-icon-btn" onClick={onClose} title="Close panel">
             <span className="material-symbols-outlined text-[14px]">close</span>
           </button>
         </div>
@@ -177,8 +200,8 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
             <span className="ai-account-dot" />
             <span className="ai-account-email" title={email}>{email || 'Connected'}</span>
           </div>
-          <button className="ai-logout-btn" onClick={() => logout.mutate()} title="Sign out">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <button type="button" className="ai-logout-btn" onClick={() => logout.mutate()} title="Sign out">
+            <svg aria-hidden="true" focusable="false" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
             </svg>
             Sign out
@@ -209,7 +232,7 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
               {messages.map((msg, i) => (
                 <MessageBubble
                   key={msg.id ?? i}
-                  role={msg.role}
+                  messageRole={msg.role}
                   content={msg.content}
                   onInsertToEditor={onInsertToEditor}
                 />
@@ -218,7 +241,7 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
               {/* Streaming response */}
               {streamingContent && (
                 <MessageBubble
-                  role="assistant"
+                  messageRole="assistant"
                   content={streamingContent}
                   isStreaming
                   onInsertToEditor={onInsertToEditor}
@@ -242,7 +265,7 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
               />
               {isStreaming ? (
                 <button type="button" className="ai-send-btn ai-stop-btn" onClick={stopStreaming} title="Stop">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="6" width="12" height="12" rx="2" />
                   </svg>
                 </button>
@@ -251,7 +274,7 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
                   {rateLimitCooldown > 0 ? (
                     <span style={{ fontSize: 11, fontWeight: 600 }}>{rateLimitCooldown}s</span>
                   ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg aria-hidden="true" focusable="false" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" />
                     </svg>
                   )}
@@ -272,7 +295,7 @@ function LoginPrompt({ isExpired, onLogin, isLoading }: { isExpired: boolean; on
   return (
     <div className="ai-login-prompt">
       <div className="ai-login-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5">
+        <svg aria-hidden="true" focusable="false" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5">
           <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12" />
           <circle cx="12" cy="12" r="3" />
         </svg>
@@ -286,6 +309,7 @@ function LoginPrompt({ isExpired, onLogin, isLoading }: { isExpired: boolean; on
           : 'Use your ChatGPT account to chat with AI about your database.'}
       </p>
       <button
+        type="button"
         className="ai-login-btn"
         onClick={onLogin}
         disabled={isLoading}
@@ -306,7 +330,7 @@ function ErrorBanner({ error, onDismiss }: { error: AIError; onDismiss: () => vo
         <span className="ai-error-icon">{isQuota ? '⚠️' : isRateLimit ? '⏳' : '❌'}</span>
         <span className="ai-error-text">{error.message}</span>
       </div>
-      <button className="ai-error-dismiss" onClick={onDismiss}>×</button>
+      <button type="button" className="ai-error-dismiss" onClick={onDismiss}>×</button>
     </div>
   )
 }
@@ -325,7 +349,9 @@ function parseCodeBlocks(content: string): ContentBlock[] {
   let lastIndex = 0
   let match: RegExpExecArray | null
 
-  while ((match = regex.exec(content)) !== null) {
+  match = regex.exec(content)
+
+  while (match !== null) {
     // Text before code block
     if (match.index > lastIndex) {
       blocks.push({ type: 'text', content: content.slice(lastIndex, match.index) })
@@ -337,6 +363,7 @@ function parseCodeBlocks(content: string): ContentBlock[] {
       content: match[2].trim(),
     })
     lastIndex = match.index + match[0].length
+    match = regex.exec(content)
   }
 
   // Remaining text
@@ -373,11 +400,11 @@ function CodeBlock({ code, language, onInsertToEditor }: {
         <span className="ai-code-lang">{language || 'code'}</span>
         <div className="ai-code-actions">
           {onInsertToEditor && (
-            <button className="ai-code-action-btn" onClick={handleInsert} title="Insert to Editor">
+            <button type="button" className="ai-code-action-btn" onClick={handleInsert} title="Insert to Editor">
               {inserted ? '✓ Inserted' : '⬇ Insert'}
             </button>
           )}
-          <button className="ai-code-action-btn" onClick={handleCopy} title="Copy">
+          <button type="button" className="ai-code-action-btn" onClick={handleCopy} title="Copy">
             {copied ? '✓ Copied' : '📋 Copy'}
           </button>
         </div>
@@ -394,6 +421,15 @@ function escapeHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+const MARKDOWN_SANITIZE_OPTIONS = {
+  FORBID_ATTR: ['onerror', 'onload'],
+  FORBID_TAGS: ['script', 'iframe'],
+}
+
+function sanitizeMarkdownHtml(html: string): string {
+  return DOMPurify.sanitize(html, MARKDOWN_SANITIZE_OPTIONS)
 }
 
 function formatMarkdown(text: string): string {
@@ -416,28 +452,28 @@ function formatMarkdown(text: string): string {
   // Numbered list: lines starting with 1. 2. etc
   html = html.replace(/^(\d+)\. (.+)$/gm, '<span class="ai-list-item">$1. $2</span>')
 
-  return html
+  return sanitizeMarkdownHtml(html)
 }
 
 // ─── SVG Icons ───
 
 function AIIcon({ size = 16 }: { size?: number }) {
   return (
-    <span className="material-symbols-outlined" style={{ fontSize: size }}>auto_awesome</span>
+    <span aria-hidden="true" className="material-symbols-outlined" style={{ fontSize: size }}>auto_awesome</span>
   )
 }
 
 function UserIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="8" r="4" />
       <path d="M20 21a8 8 0 1 0-16 0" />
     </svg>
   )
 }
 
-function MessageBubble({ role, content, isStreaming, onInsertToEditor }: {
-  role: string
+function MessageBubble({ messageRole, content, isStreaming, onInsertToEditor }: {
+  messageRole: string
   content: string
   isStreaming?: boolean
   onInsertToEditor?: (code: string) => void
@@ -445,24 +481,25 @@ function MessageBubble({ role, content, isStreaming, onInsertToEditor }: {
   const blocks = parseCodeBlocks(content)
 
   return (
-    <div className={`ai-message ai-message-${role}`}>
-      <div className={`ai-message-avatar ${role === 'assistant' ? 'ai-avatar-assistant' : 'ai-avatar-user'}`}>
-        {role === 'assistant' ? <AIIcon size={15} /> : <UserIcon size={15} />}
+    <div className={`ai-message ai-message-${messageRole}`}>
+      <div className={`ai-message-avatar ${messageRole === 'assistant' ? 'ai-avatar-assistant' : 'ai-avatar-user'}`}>
+        {messageRole === 'assistant' ? <AIIcon size={15} /> : <UserIcon size={15} />}
       </div>
       <div className="ai-message-content">
-        {blocks.map((block, i) => (
+        {blocks.map((block) => (
           block.type === 'code' ? (
             <CodeBlock
-              key={i}
+              key={`code-${block.language ?? 'plain'}-${block.content}`}
               code={block.content}
               language={block.language}
               onInsertToEditor={onInsertToEditor}
             />
           ) : block.content.trim() ? (
+            // eslint-disable-next-line react/no-danger, react-dom/no-dangerously-set-innerhtml
             <div
-              key={i}
+              key={`text-${block.content}`}
               className="ai-message-text"
-              dangerouslySetInnerHTML={{ __html: formatMarkdown(block.content.trim()) }}
+              dangerouslySetInnerHTML={{ __html: sanitizeMarkdownHtml(formatMarkdown(block.content.trim())) }}
             />
           ) : null
         ))}
@@ -487,12 +524,13 @@ function WelcomeMessage({ onSuggestionClick }: { onSuggestionClick: (text: strin
       <h3>Database AI Assistant</h3>
       <p>Ask questions about your schema, write SQL queries, or get optimization tips.</p>
       <div className="ai-welcome-suggestions">
-        {suggestions.map((s, i) => (
-          <button
-            key={i}
-            className="ai-suggestion"
-            onClick={() => onSuggestionClick(s.text)}
-          >
+          {suggestions.map((s) => (
+            <button
+              key={s.text}
+              type="button"
+              className="ai-suggestion"
+              onClick={() => onSuggestionClick(s.text)}
+            >
             {s.emoji} {s.text}
           </button>
         ))}

@@ -1,0 +1,1 @@
+export { ResultsGrid } from './ResultsGrid'

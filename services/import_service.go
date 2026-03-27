@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -193,9 +194,7 @@ func (s *ImportService) importSQLDatabase(ctx context.Context, drv driver.Driver
 		if trimmed == "" {
 			continue
 		}
-		upper := strings.ToUpper(trimmed)
-		if strings.HasPrefix(upper, "CREATE") || strings.HasPrefix(upper, "DROP") ||
-			strings.HasPrefix(upper, "ALTER") || strings.HasPrefix(upper, "TRUNCATE") {
+		if isDDLStatement(trimmed) {
 			ddl = append(ddl, stmt)
 		} else {
 			dml = append(dml, stmt)
@@ -205,27 +204,131 @@ func (s *ImportService) importSQLDatabase(ctx context.Context, drv driver.Driver
 	total := int64(len(ddl) + len(dml))
 	var current int64
 
-	for _, stmt := range ddl {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if _, err := drv.Execute(ctx, stmt); err != nil {
-			return fmt.Errorf("execute DDL: %w", err)
-		}
-		current++
-		s.emitProgress("ddl", current, total)
-	}
+	txDrv, supportsTx := drv.(driver.TransactionalDriver)
+	dbType := drv.Type()
+	isMySQLEngine := dbType == driver.MySQL || dbType == driver.MariaDB
 
-	for _, stmt := range dml {
-		if ctx.Err() != nil {
-			return ctx.Err()
+	switch {
+	case supportsTx && !isMySQLEngine:
+		tx, err := txDrv.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin transaction: %w", err)
 		}
-		if _, err := drv.Execute(ctx, stmt); err != nil {
-			return fmt.Errorf("execute DML: %w", err)
+
+		for _, stmt := range ddl {
+			if ctx.Err() != nil {
+				tx.Rollback()
+				return ctx.Err()
+			}
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("execute DDL statement %d/%d: %w", current+1, total, err)
+			}
+			current++
+			s.emitProgress("ddl", current, total)
 		}
-		current++
-		if current%100 == 0 {
-			s.emitProgress("data", current, total)
+
+		for _, stmt := range dml {
+			if ctx.Err() != nil {
+				tx.Rollback()
+				return ctx.Err()
+			}
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("execute DML statement %d/%d: %w", current+1, total, err)
+			}
+			current++
+			if current%100 == 0 || current == total {
+				s.emitProgress("data", current, total)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit transaction: %w", err)
+		}
+
+	case supportsTx && isMySQLEngine:
+		// MySQL/MariaDB: DDL causes an implicit commit and cannot be transacted.
+		// Execute DDL statements individually outside any transaction, then wrap
+		// all DML in a single transaction so DML failures roll back cleanly.
+		if len(ddl) > 0 {
+			s.emit("import:warning", map[string]interface{}{
+				"message": "DDL statements (CREATE, ALTER, DROP, TRUNCATE) cause implicit commits in MySQL/MariaDB. If the import fails after DDL, those schema changes cannot be rolled back.",
+			})
+		}
+
+		for _, stmt := range ddl {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			result, err := drv.Execute(ctx, stmt)
+			if err != nil {
+				return fmt.Errorf("execute DDL statement %d/%d: %w", current+1, total, err)
+			}
+			if result != nil && result.Error != "" {
+				return fmt.Errorf("execute DDL statement %d/%d: %s", current+1, total, result.Error)
+			}
+			current++
+			s.emitProgress("ddl", current, total)
+		}
+
+		if len(dml) > 0 {
+			tx, err := txDrv.BeginTx(ctx, nil)
+			if err != nil {
+				return fmt.Errorf("begin DML transaction: %w", err)
+			}
+
+			for _, stmt := range dml {
+				if ctx.Err() != nil {
+					tx.Rollback()
+					return ctx.Err()
+				}
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					tx.Rollback()
+					return fmt.Errorf("execute DML statement %d/%d: %w", current+1, total, err)
+				}
+				current++
+				if current%100 == 0 || current == total {
+					s.emitProgress("data", current, total)
+				}
+			}
+
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("commit DML transaction: %w", err)
+			}
+		}
+
+	default:
+		for _, stmt := range ddl {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			result, err := drv.Execute(ctx, stmt)
+			if err != nil {
+				return fmt.Errorf("execute DDL statement %d/%d: %w", current+1, total, err)
+			}
+			if result != nil && result.Error != "" {
+				return fmt.Errorf("execute DDL statement %d/%d: %s", current+1, total, result.Error)
+			}
+			current++
+			s.emitProgress("ddl", current, total)
+		}
+
+		for _, stmt := range dml {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			result, err := drv.Execute(ctx, stmt)
+			if err != nil {
+				return fmt.Errorf("execute DML statement %d/%d: %w", current+1, total, err)
+			}
+			if result != nil && result.Error != "" {
+				return fmt.Errorf("execute DML statement %d/%d: %s", current+1, total, result.Error)
+			}
+			current++
+			if current%100 == 0 || current == total {
+				s.emitProgress("data", current, total)
+			}
 		}
 	}
 
@@ -239,6 +342,14 @@ func (s *ImportService) importSQLDatabase(ctx context.Context, drv driver.Driver
 	return nil
 }
 
+func isDDLStatement(stmt string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(stmt))
+	return strings.HasPrefix(upper, "CREATE") ||
+		strings.HasPrefix(upper, "DROP") ||
+		strings.HasPrefix(upper, "ALTER") ||
+		strings.HasPrefix(upper, "TRUNCATE")
+}
+
 func (s *ImportService) importMongoDatabase(ctx context.Context, drv driver.Driver, req DatabaseImportRequest, data []byte) error {
 	_ = ctx
 
@@ -248,8 +359,9 @@ func (s *ImportService) importMongoDatabase(ctx context.Context, drv driver.Driv
 		}
 	}
 
+	collName := strings.TrimSuffix(filepath.Base(req.FilePath), filepath.Ext(req.FilePath))
 	reader := bytes.NewReader(data)
-	if err := ImportMongoData(drv, req.DatabaseName, req.DatabaseName, reader, req.DataStrategy); err != nil {
+	if err := ImportMongoData(drv, req.DatabaseName, collName, reader, req.DataStrategy); err != nil {
 		return fmt.Errorf("import mongo data: %w", err)
 	}
 

@@ -20,7 +20,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
           cache: true
 
       - name: Setup Bun
@@ -59,7 +59,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
           cache: true
 
       - name: Setup Bun
@@ -109,7 +109,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
           cache: true
 
       - name: Setup Bun
@@ -294,4 +294,3 @@ jobs:
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "chore(homebrew): update cask to v${GITHUB_REF_NAME#v}"
           git push
-

@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 import {
   useWorkspaceExport,
   useDatabaseExport,
@@ -49,6 +50,7 @@ export function ExportModal({
   defaultIncludeData,
 }: ExportModalProps) {
   const overlayRef = useRef<HTMLButtonElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
   const { data: settings } = useSettings()
   const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
   const { exportWorkspace, isExporting: isWorkspaceExporting } = useWorkspaceExport()
@@ -159,6 +161,8 @@ export function ExportModal({
     setErrorMessage('')
   }, [])
 
+  useFocusTrap(modalRef, open, handleClose)
+
   if (!open) return null
 
   return (
@@ -167,9 +171,6 @@ export function ExportModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="export-modal-title"
-      onKeyDown={(e: ReactKeyboardEvent) => {
-        if (e.key === 'Escape') handleClose()
-      }}
     >
       {/* Backdrop */}
       <button
@@ -183,6 +184,7 @@ export function ExportModal({
 
       {/* Modal */}
       <div
+        ref={modalRef}
         className="relative w-full max-w-[520px] max-h-[90vh] bg-bg-card rounded-2xl border border-border-subtle flex flex-col overflow-hidden animate-fade-in-up"
         style={{ animationDuration: '0.3s' }}
       >

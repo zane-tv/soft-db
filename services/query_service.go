@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"soft-db/internal/driver"
@@ -18,6 +19,8 @@ type QueryService struct {
 	connService     *ConnectionService
 	settingsService *SettingsService
 	store           *store.Store
+	activeQueries   map[string]context.CancelFunc
+	queryMu         sync.RWMutex
 }
 
 // NewQueryService creates the service
@@ -26,6 +29,7 @@ func NewQueryService(cs *ConnectionService, ss *SettingsService, s *store.Store)
 		connService:     cs,
 		settingsService: ss,
 		store:           s,
+		activeQueries:   make(map[string]context.CancelFunc),
 	}
 }
 
@@ -84,7 +88,17 @@ func (s *QueryService) ExecutePaginatedQuery(connectionID string, table string, 
 
 	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+
+	s.queryMu.Lock()
+	s.activeQueries[connectionID] = cancel
+	s.queryMu.Unlock()
+
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.activeQueries, connectionID)
+		s.queryMu.Unlock()
+		cancel()
+	}()
 
 	dbType := drv.Type()
 	offset := (page - 1) * pageSize
@@ -102,28 +116,10 @@ func (s *QueryService) ExecutePaginatedQuery(connectionID string, table string, 
 	// ── SQL databases: generate SELECT + COUNT ──
 	quotedTable := quoteIdent(table, dbType)
 
-	// 1. Count query
-	countSQL := fmt.Sprintf("SELECT COUNT(*) AS cnt FROM %s", quotedTable)
-	countResult, err := drv.Execute(ctx, countSQL)
+	// 1. Count query — try estimated count first for large tables
+	totalRows, err := s.getTableRowCount(ctx, drv, dbType, table, quotedTable)
 	if err != nil {
 		return nil, fmt.Errorf("count query failed: %w", err)
-	}
-	if countResult.Error != "" {
-		return nil, fmt.Errorf("count query error: %s", countResult.Error)
-	}
-
-	var totalRows int64
-	if len(countResult.Rows) > 0 {
-		if v, ok := countResult.Rows[0]["cnt"]; ok {
-			switch val := v.(type) {
-			case float64:
-				totalRows = int64(val)
-			case int64:
-				totalRows = val
-			case int:
-				totalRows = int64(val)
-			}
-		}
 	}
 
 	totalPages := int(math.Ceil(float64(totalRows) / float64(pageSize)))
@@ -131,14 +127,11 @@ func (s *QueryService) ExecutePaginatedQuery(connectionID string, table string, 
 		totalPages = 1
 	}
 
-	// 2. Data query with LIMIT/OFFSET
-	var dataSQL string
-	switch dbType {
-	case driver.PostgreSQL, driver.Redshift:
-		dataSQL = fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, pageSize, offset)
-	default: // MySQL, MariaDB, SQLite
-		dataSQL = fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, pageSize, offset)
-	}
+	// 2. Determine ORDER BY clause for stable pagination
+	orderByClause := s.buildOrderByClause(ctx, drv, dbType, table)
+
+	// 3. Data query with ORDER BY + LIMIT/OFFSET
+	dataSQL := fmt.Sprintf("SELECT * FROM %s%s LIMIT %d OFFSET %d", quotedTable, orderByClause, pageSize, offset)
 
 	dataResult, err := drv.Execute(ctx, dataSQL)
 	if err != nil {
@@ -258,6 +251,94 @@ func (s *QueryService) executeRedisPaginated(ctx context.Context, drv driver.Dri
 	}, nil
 }
 
+const estimatedCountThreshold int64 = 10000
+
+func (s *QueryService) getTableRowCount(ctx context.Context, drv driver.Driver, dbType driver.DatabaseType, table string, quotedTable string) (int64, error) {
+	estimated := s.getEstimatedRowCount(ctx, drv, dbType, table)
+	if estimated > estimatedCountThreshold {
+		return estimated, nil
+	}
+
+	countSQL := fmt.Sprintf("SELECT COUNT(*) AS cnt FROM %s", quotedTable)
+	countResult, err := drv.Execute(ctx, countSQL)
+	if err != nil {
+		return 0, err
+	}
+	if countResult.Error != "" {
+		return 0, fmt.Errorf("%s", countResult.Error)
+	}
+
+	if len(countResult.Rows) > 0 {
+		if v, ok := countResult.Rows[0]["cnt"]; ok {
+			switch val := v.(type) {
+			case float64:
+				return int64(val), nil
+			case int64:
+				return val, nil
+			case int:
+				return int64(val), nil
+			}
+		}
+	}
+	return 0, nil
+}
+
+func (s *QueryService) getEstimatedRowCount(ctx context.Context, drv driver.Driver, dbType driver.DatabaseType, table string) int64 {
+	var estimateSQL string
+	switch dbType {
+	case driver.PostgreSQL, driver.Redshift:
+		estimateSQL = fmt.Sprintf("SELECT reltuples::bigint AS estimate FROM pg_class WHERE relname = '%s'", table)
+	case driver.MySQL, driver.MariaDB:
+		estimateSQL = fmt.Sprintf("SELECT TABLE_ROWS AS estimate FROM information_schema.TABLES WHERE TABLE_NAME = '%s'", table)
+	default:
+		return 0
+	}
+
+	result, err := drv.Execute(ctx, estimateSQL)
+	if err != nil || result.Error != "" || len(result.Rows) == 0 {
+		return 0
+	}
+
+	if v, ok := result.Rows[0]["estimate"]; ok {
+		switch val := v.(type) {
+		case float64:
+			return int64(val)
+		case int64:
+			return val
+		case int:
+			return int64(val)
+		}
+	}
+	return 0
+}
+
+func (s *QueryService) buildOrderByClause(ctx context.Context, drv driver.Driver, dbType driver.DatabaseType, table string) string {
+	columns, err := drv.Columns(ctx, table)
+	if err != nil || len(columns) == 0 {
+		return ""
+	}
+
+	var pkColumns []driver.ColumnInfo
+	for _, col := range columns {
+		if col.PrimaryKey {
+			pkColumns = append(pkColumns, col)
+		}
+	}
+
+	if len(pkColumns) > 0 {
+		sort.Slice(pkColumns, func(i, j int) bool {
+			return pkColumns[i].OrdinalPos < pkColumns[j].OrdinalPos
+		})
+		parts := make([]string, len(pkColumns))
+		for i, col := range pkColumns {
+			parts[i] = quoteIdent(col.Name, dbType)
+		}
+		return " ORDER BY " + strings.Join(parts, ", ")
+	}
+
+	return " ORDER BY " + quoteIdent(columns[0].Name, dbType)
+}
+
 func (s *QueryService) AnalyzeQuery(connectionID string, query string) (*QueryAnalysis, error) {
 	drv, err := s.connService.GetDriver(connectionID)
 	if err != nil {
@@ -276,7 +357,18 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string) (*driver.
 
 	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+
+	// Store cancel func so CancelQuery can abort this execution
+	s.queryMu.Lock()
+	s.activeQueries[connectionID] = cancel
+	s.queryMu.Unlock()
+
+	defer func() {
+		s.queryMu.Lock()
+		delete(s.activeQueries, connectionID)
+		s.queryMu.Unlock()
+		cancel()
+	}()
 
 	result, err := drv.Execute(ctx, query)
 	if err != nil {
@@ -315,6 +407,21 @@ func (s *QueryService) ExecuteQuery(connectionID string, query string) (*driver.
 	s.store.TrimHistory(connectionID, maxHistory)
 
 	return result, nil
+}
+
+func (s *QueryService) CancelQuery(connectionID string) error {
+	s.queryMu.Lock()
+	cancel, ok := s.activeQueries[connectionID]
+	if ok {
+		cancel()
+		delete(s.activeQueries, connectionID)
+	}
+	s.queryMu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("no active query for connection: %s", connectionID)
+	}
+	return nil
 }
 
 func analyzeQuery(query string, dbType driver.DatabaseType) *QueryAnalysis {
@@ -585,6 +692,134 @@ func sortedKeys(values map[string]struct{}) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// ExplainQuery runs EXPLAIN (ANALYZE, FORMAT JSON) for PostgreSQL queries and returns the JSON result.
+// Returns an error for unsupported database types.
+func (s *QueryService) ExplainQuery(connectionID string, query string) (string, error) {
+	drv, err := s.connService.GetDriver(connectionID)
+	if err != nil {
+		return "", err
+	}
+
+	dbType := drv.Type()
+	if dbType != driver.PostgreSQL && dbType != driver.Redshift {
+		return "", fmt.Errorf("EXPLAIN visualization is only supported for PostgreSQL connections")
+	}
+
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return "", fmt.Errorf("query is empty")
+	}
+	// Strip trailing semicolons — EXPLAIN doesn't allow them
+	trimmed = strings.TrimRight(trimmed, "; \t\n")
+
+	explainSQL := fmt.Sprintf("EXPLAIN (ANALYZE, FORMAT JSON) %s", trimmed)
+
+	timeout := time.Duration(s.settingsService.GetQueryTimeout()) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	result, err := drv.Execute(ctx, explainSQL)
+	if err != nil {
+		return "", fmt.Errorf("explain query failed: %w", err)
+	}
+	if result.Error != "" {
+		return "", fmt.Errorf("%s", result.Error)
+	}
+
+	// PostgreSQL EXPLAIN (FORMAT JSON) returns a single row with a single column "QUERY PLAN"
+	if len(result.Rows) > 0 {
+		for _, row := range result.Rows {
+			for _, v := range row {
+				switch val := v.(type) {
+				case string:
+					return val, nil
+				default:
+					jsonBytes, err := json.Marshal(v)
+					if err != nil {
+						return "", fmt.Errorf("failed to serialize explain result: %w", err)
+					}
+					return string(jsonBytes), nil
+				}
+			}
+		}
+	}
+
+	return "[]", nil
+}
+
+// IsDestructiveQuery checks whether a query is destructive (DELETE, DROP, TRUNCATE, UPDATE without WHERE).
+// Used by safe mode to intercept dangerous queries.
+func (s *QueryService) IsDestructiveQuery(connectionID string, query string) (bool, error) {
+	drv, err := s.connService.GetDriver(connectionID)
+	if err != nil {
+		return false, err
+	}
+	return isDestructiveQuery(query, drv.Type()), nil
+}
+
+func isDestructiveQuery(query string, dbType driver.DatabaseType) bool {
+	if dbType == driver.MongoDB || dbType == driver.Redis {
+		return false
+	}
+
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return false
+	}
+
+	normalized := normalizeQuery(strings.ToUpper(trimmed))
+	if normalized == "" {
+		return false
+	}
+
+	statements := splitStatements(normalized)
+	for _, stmt := range statements {
+		tokens := strings.Fields(stmt)
+		if len(tokens) == 0 {
+			continue
+		}
+		op := tokens[0]
+		switch op {
+		case "DROP", "TRUNCATE":
+			return true
+		case "DELETE":
+			if !containsWord(stmt, "WHERE") {
+				return true
+			}
+		case "UPDATE":
+			if !containsWord(stmt, "WHERE") {
+				return true
+			}
+		case "ALTER":
+			if containsWord(stmt, "DROP") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsWord(normalized string, word string) bool {
+	idx := strings.Index(normalized, word)
+	if idx < 0 {
+		return false
+	}
+	if idx > 0 {
+		prev := normalized[idx-1]
+		if prev >= 'A' && prev <= 'Z' || prev == '_' {
+			return false
+		}
+	}
+	end := idx + len(word)
+	if end < len(normalized) {
+		next := normalized[end]
+		if next >= 'A' && next <= 'Z' || next == '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // GetHistory returns query history for a connection

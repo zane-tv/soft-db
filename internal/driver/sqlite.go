@@ -202,6 +202,13 @@ func (d *SQLiteDriver) Functions(ctx context.Context) ([]FunctionInfo, error) {
 func (d *SQLiteDriver) Type() DatabaseType { return SQLite }
 func (d *SQLiteDriver) IsConnected() bool  { return d.db != nil }
 
+func (d *SQLiteDriver) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	return d.db.BeginTx(ctx, opts)
+}
+
 // ─── ExportableDriver implementation ───
 
 var _ ExportableDriver = (*SQLiteDriver)(nil)
@@ -233,6 +240,66 @@ func (d *SQLiteDriver) GetTableRows(table string, limit, offset int) (*QueryResu
 	defer rows.Close()
 
 	return scanRows(rows, start)
+}
+
+// ─── IndexIntrospector implementation ───
+
+var _ IndexIntrospector = (*SQLiteDriver)(nil)
+
+func (d *SQLiteDriver) GetIndexes(_ string, table string) ([]IndexInfo, error) {
+	if d.db == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	listRows, err := d.db.Query(fmt.Sprintf("PRAGMA index_list('%s')", table))
+	if err != nil {
+		return nil, fmt.Errorf("index_list %q: %w", table, err)
+	}
+	defer listRows.Close()
+
+	type idxMeta struct {
+		name      string
+		isUnique  bool
+		isPrimary bool
+	}
+	var idxList []idxMeta
+	for listRows.Next() {
+		var seq int
+		var name, origin string
+		var unique, partial int
+		if err := listRows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return nil, err
+		}
+		idxList = append(idxList, idxMeta{name: name, isUnique: unique == 1, isPrimary: origin == "pk"})
+	}
+	listRows.Close()
+
+	result := make([]IndexInfo, 0, len(idxList))
+	for _, meta := range idxList {
+		infoRows, err := d.db.Query(fmt.Sprintf("PRAGMA index_info('%s')", meta.name))
+		if err != nil {
+			return nil, fmt.Errorf("index_info %q: %w", meta.name, err)
+		}
+		var cols []string
+		for infoRows.Next() {
+			var seqno, cid int
+			var colName string
+			if err := infoRows.Scan(&seqno, &cid, &colName); err != nil {
+				infoRows.Close()
+				return nil, err
+			}
+			cols = append(cols, colName)
+		}
+		infoRows.Close()
+		result = append(result, IndexInfo{
+			Name:      meta.name,
+			TableName: table,
+			Columns:   cols,
+			IsUnique:  meta.isUnique,
+			IsPrimary: meta.isPrimary,
+		})
+	}
+	return result, nil
 }
 
 func (d *SQLiteDriver) GetCreateTableDDL(table string) (string, error) {

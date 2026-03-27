@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -480,3 +482,168 @@ func TestImportService_SplitSQLStatements(t *testing.T) {
 		})
 	}
 }
+
+func sqliteInMemory(t *testing.T) *driver.SQLiteDriver {
+	t.Helper()
+	drv := &driver.SQLiteDriver{}
+	if err := drv.Connect(context.Background(), driver.ConnectionConfig{FilePath: ":memory:"}); err != nil {
+		t.Fatalf("connect sqlite in-memory: %v", err)
+	}
+	t.Cleanup(func() { drv.Disconnect(context.Background()) })
+	return drv
+}
+
+func TestImportSQL_AllDML_CommitsSQLite(t *testing.T) {
+	t.Parallel()
+
+	drv := sqliteInMemory(t)
+	ctx := context.Background()
+
+	if _, err := drv.Execute(ctx, "CREATE TABLE tx_test (id INTEGER PRIMARY KEY, val TEXT)"); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	var stmts []string
+	for i := 1; i <= 10; i++ {
+		stmts = append(stmts, fmt.Sprintf("INSERT INTO tx_test VALUES (%d, 'v%d')", i, i))
+	}
+	sqlData := strings.Join(stmts, ";\n") + ";"
+
+	svc, _ := newTestImportService(t)
+	req := DatabaseImportRequest{ConnectionID: "fake"}
+	if err := svc.importSQLDatabase(ctx, drv, req, []byte(sqlData)); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	result, err := drv.Execute(ctx, "SELECT COUNT(*) FROM tx_test")
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if result.Error != "" {
+		t.Fatalf("count query error: %s", result.Error)
+	}
+	if len(result.Rows) == 0 {
+		t.Fatal("no rows returned from COUNT")
+	}
+	var count int64
+	switch v := result.Rows[0]["COUNT(*)"].(type) {
+	case int64:
+		count = v
+	case float64:
+		count = int64(v)
+	default:
+		t.Fatalf("unexpected count type %T: %v", result.Rows[0]["COUNT(*)"], result.Rows[0]["COUNT(*)"])
+	}
+	if count != 10 {
+		t.Errorf("row count = %d, want 10", count)
+	}
+}
+
+func TestImportSQL_DMLFailure_RollbackSQLite(t *testing.T) {
+	t.Parallel()
+
+	drv := sqliteInMemory(t)
+	ctx := context.Background()
+
+	if _, err := drv.Execute(ctx, "CREATE TABLE tx_rollback (id INTEGER PRIMARY KEY, val TEXT)"); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	stmts := []string{
+		"INSERT INTO tx_rollback VALUES (1, 'a')",
+		"INSERT INTO tx_rollback VALUES (2, 'b')",
+		"INSERT INTO tx_rollback VALUES (3, 'c')",
+		"INSERT INTO tx_rollback VALUES (4, 'd')",
+		"INSERT INTO tx_rollback VALUES (1, 'dup')", // duplicate PK — forces error
+		"INSERT INTO tx_rollback VALUES (6, 'f')",
+		"INSERT INTO tx_rollback VALUES (7, 'g')",
+		"INSERT INTO tx_rollback VALUES (8, 'h')",
+		"INSERT INTO tx_rollback VALUES (9, 'i')",
+		"INSERT INTO tx_rollback VALUES (10, 'j')",
+	}
+	sqlData := strings.Join(stmts, ";\n") + ";"
+
+	svc, _ := newTestImportService(t)
+	req := DatabaseImportRequest{ConnectionID: "fake"}
+	err := svc.importSQLDatabase(ctx, drv, req, []byte(sqlData))
+	if err == nil {
+		t.Fatal("expected error from duplicate PK insert, got nil")
+	}
+
+	result, qErr := drv.Execute(ctx, "SELECT COUNT(*) FROM tx_rollback")
+	if qErr != nil {
+		t.Fatalf("count after rollback: %v", qErr)
+	}
+	if result.Error != "" {
+		t.Fatalf("count query error: %s", result.Error)
+	}
+	if len(result.Rows) == 0 {
+		t.Fatal("no rows returned from COUNT after rollback")
+	}
+	var count int64
+	switch v := result.Rows[0]["COUNT(*)"].(type) {
+	case int64:
+		count = v
+	case float64:
+		count = int64(v)
+	default:
+		t.Fatalf("unexpected count type %T", result.Rows[0]["COUNT(*)"])
+	}
+	if count != 0 {
+		t.Errorf("row count after rollback = %d, want 0 (transaction must have been rolled back)", count)
+	}
+}
+
+type mysqlFakeDriver struct {
+	*driver.SQLiteDriver
+}
+
+func (m *mysqlFakeDriver) Type() driver.DatabaseType { return driver.MySQL }
+
+func TestImportSQL_MySQLDDLNotRolledBack(t *testing.T) {
+	t.Parallel()
+
+	sqlite := sqliteInMemory(t)
+	drv := &mysqlFakeDriver{SQLiteDriver: sqlite}
+	ctx := context.Background()
+
+	sqlData := strings.Join([]string{
+		"CREATE TABLE mysql_test (id INTEGER PRIMARY KEY, val TEXT)",
+		"INSERT INTO mysql_test VALUES (1, 'a')",
+		"INSERT INTO mysql_test VALUES (2, 'b')",
+		"INSERT INTO mysql_test VALUES (1, 'dup')", // forces DML tx to fail
+	}, ";\n") + ";"
+
+	svc, _ := newTestImportService(t)
+	req := DatabaseImportRequest{ConnectionID: "fake"}
+	err := svc.importSQLDatabase(ctx, drv, req, []byte(sqlData))
+	if err == nil {
+		t.Fatal("expected error from duplicate PK insert, got nil")
+	}
+
+	result, qErr := drv.Execute(ctx, "SELECT COUNT(*) FROM mysql_test")
+	if qErr != nil {
+		t.Fatalf("count: %v", qErr)
+	}
+	if result.Error != "" {
+		t.Fatalf("count query error: %s", result.Error)
+	}
+	if len(result.Rows) == 0 {
+		t.Fatal("no rows returned from COUNT")
+	}
+
+	var count int64
+	switch v := result.Rows[0]["COUNT(*)"].(type) {
+	case int64:
+		count = v
+	case float64:
+		count = int64(v)
+	default:
+		t.Fatalf("unexpected count type %T", result.Rows[0]["COUNT(*)"])
+	}
+	if count != 0 {
+		t.Errorf("row count = %d, want 0 (DML transaction must have been rolled back)", count)
+	}
+}
+
+var _ driver.Driver = (*mysqlFakeDriver)(nil)

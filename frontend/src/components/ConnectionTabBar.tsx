@@ -42,10 +42,12 @@ export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd, onB
       {/* Home / Back button */}
       {onBackToHub && (
         <button
+          type="button"
           onClick={onBackToHub}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           className="flex items-center gap-1.5 px-2.5 h-full shrink-0 text-text-muted/70 hover:text-text-main hover:bg-bg-hover/20 transition-colors border-r border-border-subtle/30"
           title="Back to connections"
+          aria-label="Back to connections"
         >
           <img src="/softdb-logo.png" alt="SoftDB" className="size-4 rounded-sm" />
           <span className="text-[11px] font-medium">{t('nav.home')}</span>
@@ -76,7 +78,11 @@ export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd, onB
             <span className="max-w-[120px] truncate">{tab.name}</span>
             {tabs.length > 1 && (
               <span
+                role="button"
+                tabIndex={0}
+                aria-label={`Close ${tab.name} connection`}
                 onClick={(e) => handleClose(e, tab.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClose(e as unknown as React.MouseEvent, tab.id) }}
                 className="material-symbols-outlined text-[12px] opacity-0 group-hover:opacity-100 hover:!opacity-100 hover:text-error ml-0.5 transition-all cursor-pointer rounded-sm hover:bg-error/10 p-0.5"
                 style={{ opacity: isActive ? 0.5 : undefined }}
               >
@@ -89,10 +95,12 @@ export function ConnectionTabBar({ tabs, activeId, onSelect, onClose, onAdd, onB
 
       {/* Add tab button */}
       <button
+        type="button"
         onClick={onAdd}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         className="flex items-center justify-center w-8 h-full shrink-0 text-text-muted/50 hover:text-text-main hover:bg-bg-hover/20 transition-colors"
         title="Open another connection"
+        aria-label="Open another connection"
       >
         <span className="material-symbols-outlined text-[14px]">add</span>
       </button>
