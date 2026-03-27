@@ -130,6 +130,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
   const isMongoConnection = conn?.type === 'mongodb'
+  const isRedisConnection = conn?.type === 'redis'
 
   const buildConfirmFromAnalysis = useCallback((queryText: string, analysis: QueryAnalysis | null, confirmText: string) => {
     const shouldWarnWithoutAnalysis = settings.warnQueryRisks || settings.warnLimitedQueryAnalysis
@@ -207,7 +208,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     const executedQuery = queryToRun.trim()
     // ── Auto-add LIMIT to SELECT queries ──
     let finalQuery = queryToRun
-    if (settings.autoLimit && conn?.type !== 'mongodb') {
+    if (settings.autoLimit && conn?.type !== 'mongodb' && conn?.type !== 'redis') {
       const isSelect = /^\s*select\b/i.test(finalQuery)
       const hasLimit = /\blimit\b/i.test(finalQuery)
       if (isSelect && !hasLimit) {
@@ -284,7 +285,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   }, [activeTab, isExecuting, connectionId, buildConfirmFromAnalysis, doExecuteQuery])
 
   const handleExplain = useCallback(async () => {
-    if (!activeTab?.query.trim() || isExecuting || isMongoConnection) return
+    if (!activeTab?.query.trim() || isExecuting || isMongoConnection || isRedisConnection) return
 
     const queryText = activeTab.query.trim().replace(/;\s*$/, '')
     const explainQuery = /^\s*explain\b/i.test(queryText) ? queryText : `EXPLAIN ${queryText}`
@@ -303,7 +304,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     }
 
     doExecuteQuery(explainQuery)
-  }, [activeTab, isExecuting, isMongoConnection, connectionId, buildConfirmFromAnalysis, doExecuteQuery])
+  }, [activeTab, isExecuting, isMongoConnection, isRedisConnection, connectionId, buildConfirmFromAnalysis, doExecuteQuery])
 
   const handleOptimize = useCallback(async () => {
     if (!activeTab?.query.trim()) return
@@ -409,11 +410,24 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
     setSelectedTable(tableName)
     if (conn?.type === 'mongodb') {
       updateQuery(`{ "collection": "${tableName}", "action": "find", "limit": ${settings.defaultLimit} }`)
+    } else if (conn?.type === 'redis') {
+      const keyInfo = (tables as TableInfo[]).find((k) => k.name === tableName)
+      const keyType = keyInfo?.type || 'string'
+      let redisCmd: string
+      switch (keyType) {
+        case 'hash': redisCmd = `HGETALL ${tableName}`; break
+        case 'list': redisCmd = `LRANGE ${tableName} 0 99`; break
+        case 'set': redisCmd = `SMEMBERS ${tableName}`; break
+        case 'zset': redisCmd = `ZRANGE ${tableName} 0 99 WITHSCORES`; break
+        case 'stream': redisCmd = `XRANGE ${tableName} - + COUNT 100`; break
+        default: redisCmd = `GET ${tableName}`; break
+      }
+      updateQuery(redisCmd)
     } else {
       const q = conn?.type === 'mysql' || conn?.type === 'mariadb' ? '`' : '"'
       updateQuery(`SELECT *\nFROM ${q}${tableName}${q}\nLIMIT ${settings.defaultLimit};`)
     }
-  }, [updateQuery, settings.defaultLimit, conn?.type])
+  }, [updateQuery, settings.defaultLimit, conn?.type, tables])
 
   // ── Full View ──
   const handleViewFullData = useCallback(async (tableName: string) => {
@@ -610,8 +624,8 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
                   onExecute={handleExecute}
                   onExplain={handleExplain}
                   onOptimize={handleOptimize}
-                  explainDisabled={isMongoConnection}
-                  explainDisabledReason={isMongoConnection ? 'Explain is currently unsupported for MongoDB connections.' : undefined}
+                  explainDisabled={isMongoConnection || isRedisConnection}
+                  explainDisabledReason={isMongoConnection ? 'Explain is currently unsupported for MongoDB connections.' : isRedisConnection ? 'Explain is not applicable for Redis connections.' : undefined}
                   tables={tables as TableInfo[]}
                   views={views as string[]}
                   functions={functions as FunctionInfo[]}
@@ -622,9 +636,9 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
                 {/* Floating Run Button */}
                 <div className="absolute bottom-4 right-4 z-10">
                   <div className="flex flex-col items-end gap-2">
-                    {isMongoConnection && (
+                    {(isMongoConnection || isRedisConnection) && (
                       <div className="max-w-[360px] rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-200 shadow-sm">
-                        Explain is intentionally unavailable for MongoDB in v1.
+                        {isMongoConnection ? 'Explain is intentionally unavailable for MongoDB in v1.' : 'Explain is not applicable for Redis connections.'}
                       </div>
                     )}
 
@@ -643,9 +657,9 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
                     <button
                       type="button"
                       onClick={handleExplain}
-                      disabled={isExecuting || !activeTab?.query.trim() || isMongoConnection}
+                      disabled={isExecuting || !activeTab?.query.trim() || isMongoConnection || isRedisConnection}
                       className="flex items-center gap-1.5 bg-bg-elevated/90 hover:bg-bg-elevated text-text-main px-3 py-2 rounded-full border border-border-subtle/60 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-                      title={isMongoConnection ? 'Explain is not supported for MongoDB connections.' : 'Run EXPLAIN using current query result flow'}
+                      title={isMongoConnection ? 'Explain is not supported for MongoDB connections.' : isRedisConnection ? 'Explain is not applicable for Redis.' : 'Run EXPLAIN using current query result flow'}
                     >
                       <span className="material-symbols-outlined text-[16px]">search_insights</span>
                       <span className="font-medium text-xs">Explain</span>

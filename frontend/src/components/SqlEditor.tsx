@@ -176,9 +176,9 @@ export function SqlEditor({
   const { settings } = useSettingsContext()
   const settingsRef = useRef(settings)
   const isMongo = connType === 'mongodb'
+  const isRedis = connType === 'redis'
 
-  // Editor language: json for MongoDB, sql for others
-  const editorLanguage = isMongo ? 'json' : 'sql'
+  const editorLanguage = isMongo ? 'json' : isRedis ? 'plaintext' : 'sql'
 
   // Keep refs in sync with latest props (no re-registration needed)
   useEffect(() => { tablesRef.current = tables }, [tables])
@@ -315,13 +315,12 @@ export function SqlEditor({
           })
         })
 
-        // ── Snippets (contextual: SQL vs MongoDB) ──
-        // Determine mode from both connType ref AND the model's language
         const modelLang = model.getLanguageId()
         const isMongoConn = connTypeRef.current === 'mongodb' || modelLang === 'json'
-        const isSqlConn = !isMongoConn
+        const isRedisConn = connTypeRef.current === 'redis' || modelLang === 'plaintext'
+        const isSqlConn = !isMongoConn && !isRedisConn
 
-        // Skip SQL suggestions when editor is in json mode, and vice versa
+        if (isRedisConn) return { suggestions: [] }
         if (isMongoConn && modelLang === 'sql') return { suggestions: [] }
         if (isSqlConn && modelLang === 'json') return { suggestions: [] }
         const snippets = isMongoConn ? [
@@ -395,7 +394,7 @@ export function SqlEditor({
       if (!model || !pos) return
 
       // ── Auto-uppercase SQL keywords ──
-      if (settingsRef.current.autoUppercase && connTypeRef.current !== 'mongodb') {
+      if (settingsRef.current.autoUppercase && connTypeRef.current !== 'mongodb' && connTypeRef.current !== 'redis') {
         const SQL_KEYWORDS = /^(select|from|where|insert|into|update|set|delete|drop|alter|create|table|index|join|inner|outer|left|right|cross|on|and|or|not|in|is|null|like|between|exists|having|group|order|by|asc|desc|limit|offset|as|distinct|union|all|case|when|then|else|end|values|truncate|begin|commit|rollback)$/i
         for (const change of e.changes) {
           const typed = change.text
@@ -507,7 +506,7 @@ export function SqlEditor({
         quickSuggestionsDelay: 0,
         wordBasedSuggestions: 'off',
         suggest: {
-          showKeywords: !isMongo,
+          showKeywords: !isMongo && !isRedis,
           showSnippets: true,
           showFunctions: true,
           showStructs: true,   // TableInfo (CompletionItemKind.Struct)

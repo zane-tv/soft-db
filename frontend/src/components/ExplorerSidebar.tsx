@@ -12,7 +12,7 @@ interface ExplorerSidebarProps {
   connName?: string
   connType?: string
   connectionId: string
-  tables: { name: string }[]
+  tables: { name: string; type?: string }[]
   views: string[]
   functions: { name: string }[]
   tablesLoading?: boolean
@@ -102,6 +102,7 @@ export function ExplorerSidebar({
   }
 
   const { data: hasMultiDB } = useHasMultiDB(connectionId)
+  const isRedis = connType === 'redis'
 
   return (
     <aside
@@ -134,16 +135,17 @@ export function ExplorerSidebar({
           />
         ) : (
           <>
-            <TreeSection label="Tables" icon="table_chart" count={tables.length} isLoading={tablesLoading} onAdd={onCreateTable}>
-              {tables.map((t) => (
+            <TreeSection label={isRedis ? t('explorer.keys') : 'Tables'} icon="table_chart" count={tables.length} isLoading={tablesLoading} onAdd={isRedis ? undefined : onCreateTable}>
+              {tables.map((tbl) => (
                 <TableTreeItem
-                  key={t.name}
-                  name={t.name}
+                  key={tbl.name}
+                  name={tbl.name}
+                  keyType={isRedis && tbl.type ? tbl.type : undefined}
                   connectionId={connectionId}
-                  active={selectedTable === t.name}
-                  onClick={() => onTableClick(t.name)}
-                  onSettings={() => onStructureOpen(t.name)}
-                  onContextMenu={(e) => handleTableContextMenu(e, t.name)}
+                  active={selectedTable === tbl.name}
+                  onClick={() => onTableClick(tbl.name)}
+                  onSettings={() => onStructureOpen(tbl.name)}
+                  onContextMenu={(e) => handleTableContextMenu(e, tbl.name)}
                 />
               ))}
             </TreeSection>
@@ -427,6 +429,7 @@ function TableTreeItem({
   onClick,
   onSettings,
   onContextMenu,
+  keyType,
 }: {
   name: string
   connectionId: string
@@ -434,6 +437,7 @@ function TableTreeItem({
   onClick?: () => void
   onSettings?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
+  keyType?: string
 }) {
   const { data: settings } = useSettings()
   const { t } = useTranslation((settings?.language as 'en' | 'vi') ?? 'en')
@@ -450,22 +454,27 @@ function TableTreeItem({
             : 'text-text-muted hover:text-text-main hover:bg-bg-hover/30 border-transparent'
         }`}
       >
-        {/* Expand arrow */}
-        <button
-          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
-          className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-bg-hover/50 transition-colors"
-        >
-          <span className={`material-symbols-outlined text-[14px] text-text-muted/50 transition-transform ${expanded ? '' : '-rotate-90'}`}>
-            expand_more
-          </span>
-        </button>
+        {!keyType ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-bg-hover/50 transition-colors"
+          >
+            <span className={`material-symbols-outlined text-[14px] text-text-muted/50 transition-transform ${expanded ? '' : '-rotate-90'}`}>
+              expand_more
+            </span>
+          </button>
+        ) : (
+          <span className="shrink-0 w-5 h-5" />
+        )}
 
-        {/* Table name (clickable) */}
-        <button onClick={onClick} className="flex items-center gap-2 flex-1 min-w-0 text-left">
-          <span className={`material-symbols-outlined text-[15px] transition-colors ${active ? 'text-primary' : 'opacity-40 group-hover:opacity-70'}`}>
-            table_chart
+        <button onClick={onClick} className="flex items-center gap-2 flex-1 min-w-0 text-left overflow-hidden">
+          <span className={`material-symbols-outlined text-[15px] transition-colors shrink-0 ${active ? 'text-primary' : 'opacity-40 group-hover:opacity-70'}`}>
+            {keyType ? 'key' : 'table_chart'}
           </span>
           <span className="truncate">{name}</span>
+          {keyType && (
+            <span className="text-[9px] px-1 rounded bg-white/10 text-text-muted ml-1 shrink-0">{keyType}</span>
+          )}
         </button>
 
         {/* Settings icon */}
