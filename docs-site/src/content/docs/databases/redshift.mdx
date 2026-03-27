@@ -1,0 +1,160 @@
+---
+title: Amazon Redshift
+description: Connect to Amazon Redshift in SoftDB — multi-DB browsing, EXPLAIN, structure designer, and Redshift-specific SQL.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Amazon Redshift uses the PostgreSQL wire protocol, so SoftDB connects to it using the same pgx driver as PostgreSQL. You get multi-database browsing, EXPLAIN support, and a structure designer — with some limitations specific to Redshift's columnar architecture.
+
+## Quick Setup
+
+<Steps>
+
+1. Open the Connection Hub and click **New Connection**.
+
+2. Select **Redshift** as the database type.
+
+3. Fill in your connection details:
+   - **Host**: your Redshift cluster endpoint (e.g., `my-cluster.abc123.us-east-1.redshift.amazonaws.com`)
+   - **Port**: `5439`
+   - **Username**: your Redshift user (e.g., `awsuser`)
+   - **Password**: your password
+   - **Database**: your database name (defaults to `dev` if left blank)
+
+4. Set **SSL Mode** to `require` (Redshift requires SSL by default).
+
+5. Click **Test Connection**, then **Save**.
+
+</Steps>
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| Host | — | Redshift cluster endpoint hostname |
+| Port | `5439` | Standard Redshift port (not 5432) |
+| Username | — | Required |
+| Password | — | Stored encrypted |
+| Database | `dev` | Defaults to `dev` if left blank |
+| SSL Mode | `require` | Redshift requires SSL; use `require` or `verify-full` |
+
+<Aside type="note">
+Redshift's default SSL mode in SoftDB is `require` (not `disable` like PostgreSQL). Most Redshift clusters enforce SSL, so leaving it at `require` is the right default.
+</Aside>
+
+## Multi-Database Browsing
+
+SoftDB queries `pg_database` to list all non-template databases on the cluster. The sidebar shows a three-level tree similar to PostgreSQL. Switching databases requires a full reconnect (same as PostgreSQL), which SoftDB handles automatically when you click a different database in the tree.
+
+## Structure Designer
+
+Redshift's DDL support is narrower than PostgreSQL's. The structure designer reflects these limitations:
+
+| Operation | Supported | Notes |
+|-----------|-----------|-------|
+| Create table | Yes | |
+| Add column | Yes | |
+| Rename column | Yes | |
+| Change column type | Yes | Limited to specific conversions; may fail on existing data |
+| Change column default | No | Not supported by Redshift ALTER TABLE |
+| Change column nullability | No | Not supported by Redshift ALTER TABLE |
+| Drop column | Yes | Destructive, requires confirmation |
+
+<Aside type="caution">
+Redshift DDL is narrower than PostgreSQL and multi-statement apply should be reviewed carefully. Some operations that work in PostgreSQL will fail in Redshift.
+</Aside>
+
+## SQL Examples
+
+### DISTKEY and SORTKEY
+
+```sql
+-- Create a table with distribution and sort keys
+CREATE TABLE orders (
+  order_id    BIGINT NOT NULL,
+  customer_id BIGINT NOT NULL,
+  order_date  DATE NOT NULL,
+  amount      DECIMAL(10, 2)
+)
+DISTKEY(customer_id)
+SORTKEY(order_date);
+```
+
+### COPY from S3
+
+```sql
+-- Load data from S3 into a Redshift table
+COPY orders
+FROM 's3://my-bucket/data/orders/'
+IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3Role'
+FORMAT AS PARQUET;
+```
+
+### Analytical queries
+
+```sql
+-- Revenue by month with running total
+SELECT
+  DATE_TRUNC('month', order_date) AS month,
+  SUM(amount) AS monthly_revenue,
+  SUM(SUM(amount)) OVER (ORDER BY DATE_TRUNC('month', order_date)) AS cumulative_revenue
+FROM orders
+GROUP BY 1
+ORDER BY 1;
+```
+
+### EXPLAIN
+
+```sql
+EXPLAIN
+SELECT customer_id, SUM(amount)
+FROM orders
+WHERE order_date >= '2024-01-01'
+GROUP BY customer_id;
+```
+
+SoftDB renders the EXPLAIN output in the results grid. Redshift's EXPLAIN output shows the query plan with estimated costs and distribution information.
+
+### Check table distribution
+
+```sql
+-- Check how data is distributed across slices
+SELECT
+  trim(name) AS table_name,
+  diststyle,
+  distkey
+FROM pg_class_info
+WHERE schema = 'public'
+ORDER BY name;
+```
+
+## Limitations
+
+Compared to PostgreSQL, Redshift has these notable limitations in SoftDB:
+
+- **No stored functions** — Redshift has limited stored procedure support; the Functions section in the sidebar is empty.
+- **No ALTER COLUMN default** — you can't change a column's default value via the structure designer.
+- **No ALTER COLUMN nullability** — you can't change whether a column is nullable via the structure designer.
+- **Limited type conversions** — only specific type changes are allowed (e.g., VARCHAR to a larger VARCHAR).
+
+## Troubleshooting
+
+### Connection timeout
+
+```
+failed to ping redshift: dial tcp ...:5439: i/o timeout
+```
+
+The most common cause is a VPC security group or firewall blocking port 5439. Check that:
+- Your Redshift cluster's security group allows inbound TCP on port 5439 from your IP.
+- The cluster is in a public subnet (or you're connecting via a VPN/bastion).
+- The cluster endpoint is correct (copy it from the Redshift console).
+
+### Authentication failed
+
+```
+failed to ping redshift: FATAL: password authentication failed for user "awsuser"
+```
+
+Wrong username or password. Redshift usernames are case-insensitive but passwords are case-sensitive. If you're using IAM authentication, that's not supported in SoftDB's connection form — use a database user with a password instead.

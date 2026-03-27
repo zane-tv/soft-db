@@ -1,0 +1,163 @@
+---
+title: Redis
+description: Browse Redis keys by type, run commands, and switch between database indexes in SoftDB.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+SoftDB supports Redis with key browsing by type, database index switching (0-15), and a command interface that accepts any Redis command via the SQL editor.
+
+## Quick Setup
+
+<Steps>
+
+1. Open the Connection Hub and click **New Connection**.
+
+2. Select **Redis** as the database type.
+
+3. Fill in your connection details:
+   - **Host**: `localhost`
+   - **Port**: `6379`
+   - **Password**: your Redis password (leave blank if none)
+   - **Database**: a number from `0` to `15` (defaults to `0`)
+
+4. Click **Test Connection**, then **Save**.
+
+</Steps>
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| Host | `localhost` | Redis server hostname or IP |
+| Port | `6379` | Standard Redis port |
+| Username | — | Optional. Used for Redis ACL (Redis 6+) |
+| Password | — | Optional. Leave blank for unauthenticated servers |
+| Database | `0` | Redis database index, 0-15 |
+
+## Key Browsing
+
+SoftDB scans the selected database index using `SCAN` and lists up to 1,000 keys in the sidebar. Each key shows its type (string, hash, list, set, zset, stream). Clicking a key opens it in the table explorer.
+
+The sidebar tree shows database indexes (0-15) as "databases". Clicking a different index issues a `SELECT` command and refreshes the key list.
+
+## Data Type Support
+
+SoftDB reads each key type using the appropriate Redis command:
+
+| Type | Read Command | Display |
+|------|-------------|---------|
+| `string` | `GET` | Single value |
+| `hash` | `HGETALL` | Field-value pairs |
+| `list` | `LRANGE 0 -1` | Ordered list with index |
+| `set` | `SMEMBERS` | Member list |
+| `zset` | `ZRANGE 0 -1 WITHSCORES` | Score-value pairs |
+| `stream` | `XRANGE - +` | Stream entries |
+
+Key metadata shown in the column panel includes the TTL (in seconds, `-1` means no expiry), encoding, and memory usage in bytes.
+
+## Running Commands
+
+The SQL editor accepts any Redis command in CLI syntax. Commands are space-separated tokens, just like `redis-cli`:
+
+```
+GET mykey
+```
+
+```
+SET session:user:42 "active" EX 3600
+```
+
+```
+HSET user:1 name "Alice" email "alice@example.com"
+```
+
+```
+ZADD leaderboard 1500 "player1" 1200 "player2"
+```
+
+You can run multiple commands by putting each on its own line:
+
+```
+SET counter 0
+INCR counter
+INCR counter
+GET counter
+```
+
+Results from multiple commands are merged into a single result set.
+
+### Useful commands
+
+```
+# List all keys matching a pattern
+KEYS user:*
+
+# Get key type
+TYPE mykey
+
+# Check TTL
+TTL session:user:42
+
+# Get server info
+INFO server
+
+# Get memory usage
+MEMORY USAGE mykey
+
+# Flush current database (careful!)
+FLUSHDB
+```
+
+## Limitations
+
+Redis is a key-value store, not a relational database. Several SoftDB features that work with SQL databases are not available for Redis:
+
+| Feature | Available |
+|---------|-----------|
+| SQL editor | Yes (Redis CLI syntax) |
+| Key browsing | Yes |
+| Database index switching | Yes |
+| Structure designer | No |
+| Export to CSV/JSON | No |
+| Transactions (MULTI/EXEC) | No (via SoftDB UI) |
+| Drop table / delete key | No (use `DEL` command) |
+| Views / functions | No |
+
+<Aside type="note">
+To delete a key, use the `DEL` command in the SQL editor: `DEL mykey`. The "drop table" button in the UI is disabled for Redis connections.
+</Aside>
+
+## Troubleshooting
+
+### Connection refused
+
+```
+failed to ping redis: dial tcp 127.0.0.1:6379: connect: connection refused
+```
+
+Redis isn't running. Start it with `redis-server` or `systemctl start redis`. Check the port in `/etc/redis/redis.conf` (`port` directive).
+
+### Authentication required
+
+```
+failed to ping redis: NOAUTH Authentication required
+```
+
+The Redis server requires a password but none was provided. Add the password in the connection settings.
+
+### Wrong password
+
+```
+failed to ping redis: ERR invalid password
+```
+
+The password is incorrect. Check the `requirepass` directive in your Redis config.
+
+### Invalid database index
+
+```
+failed to ping redis: ERR DB index is out of range
+```
+
+The database index must be between 0 and 15. Redis defaults to 16 databases (0-15). If your server has fewer, use a lower index.

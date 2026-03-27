@@ -1,0 +1,158 @@
+---
+title: SSH Tunneling
+description: Connect to databases behind firewalls or in private networks using SSH tunneling in SoftDB.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+SSH tunneling lets you connect to a database that isn't directly reachable from your machine. SoftDB opens an SSH connection to a bastion host (or jump server), then forwards a local port through that SSH connection to the database server. The database driver connects to the local port, and traffic flows through the tunnel transparently.
+
+## What is SSH Tunneling?
+
+When your database lives in a private network (a VPC, a corporate network, or a server behind a firewall), you can't connect to it directly. But if you have SSH access to a server in that network, you can use it as a relay.
+
+SoftDB handles this automatically:
+
+1. SoftDB connects to the SSH server over port 22 (or a custom port).
+2. It opens a local TCP listener on a random port on `127.0.0.1`.
+3. Any connection to that local port is forwarded through the SSH connection to the database host and port.
+4. The database driver connects to `127.0.0.1:<random-port>` instead of the remote host.
+
+The tunnel stays open for the lifetime of the connection. When you disconnect, the tunnel closes.
+
+## Setup
+
+<Steps>
+
+1. Open the Connection Hub and click **New Connection** (or edit an existing connection).
+
+2. Fill in the database connection details as normal (host, port, credentials). The **Host** and **Port** here are the database's address as seen from the SSH server — often `localhost` if the database is on the same machine as the SSH server.
+
+3. Expand the **SSH Tunnel** section at the bottom of the form.
+
+4. Toggle **Enable SSH Tunnel** on.
+
+5. Fill in the SSH server details:
+   - **SSH Host**: hostname or IP of the SSH server (bastion host)
+   - **SSH Port**: SSH port, defaults to `22`
+   - **SSH User**: your SSH login username
+
+6. Choose an authentication method:
+   - **Password**: enter your SSH password
+   - **Private Key**: enter the path to your PEM or OpenSSH private key file
+
+7. Click **Test Connection** to verify the tunnel and database connection together, then **Save**.
+
+</Steps>
+
+## SSH Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| SSH Host | — | Hostname or IP of the SSH server |
+| SSH Port | `22` | Standard SSH port |
+| SSH User | — | Your SSH login username |
+| SSH Password | — | Used when auth type is Password |
+| SSH Key Path | — | Absolute path to your private key file (PEM or OpenSSH format) |
+
+## Authentication Methods
+
+### Password authentication
+
+Enter your SSH password in the **SSH Password** field. This is the simplest option but less secure than key-based auth. Many servers disable password authentication entirely.
+
+### Private key authentication
+
+Enter the path to your private key file in the **SSH Key Path** field. SoftDB reads the key file from disk when establishing the tunnel. Supported formats:
+
+- OpenSSH format (`-----BEGIN OPENSSH PRIVATE KEY-----`)
+- PEM format (`-----BEGIN RSA PRIVATE KEY-----`, `-----BEGIN EC PRIVATE KEY-----`, etc.)
+
+The key file must be readable by SoftDB. On macOS and Linux, check permissions with `ls -la ~/.ssh/id_rsa` — the file should be `600` (owner read/write only).
+
+If your key has a passphrase, SoftDB doesn't currently support passphrase-protected keys. Use `ssh-keygen -p` to remove the passphrase, or use `ssh-agent` and configure your key there.
+
+## How It Works
+
+When you connect with SSH tunneling enabled, SoftDB:
+
+1. Reads the SSH config (host, port, user, auth method).
+2. Dials the SSH server and authenticates.
+3. Opens a local TCP listener on `127.0.0.1` with a randomly assigned port (chosen by the OS).
+4. Replaces the database host/port in the driver config with `127.0.0.1:<local-port>`.
+5. Connects the database driver to the local port.
+6. Each database connection through the local port gets forwarded via a `direct-tcpip` SSH channel to `<db-host>:<db-port>` as seen from the SSH server.
+
+The local port is ephemeral — it changes each time you connect. SoftDB manages this automatically; you never need to know the port number.
+
+## Common Configurations
+
+### Database on the same server as SSH
+
+The database host is `localhost` from the SSH server's perspective:
+
+```
+SSH Host: bastion.example.com
+SSH Port: 22
+SSH User: ubuntu
+
+Database Host: localhost
+Database Port: 5432
+```
+
+### Database on a separate server in the same network
+
+```
+SSH Host: bastion.example.com
+SSH Port: 22
+SSH User: ubuntu
+
+Database Host: db.internal.example.com
+Database Port: 5432
+```
+
+### AWS RDS behind a bastion
+
+```
+SSH Host: ec2-1-2-3-4.compute-1.amazonaws.com
+SSH Port: 22
+SSH User: ec2-user
+SSH Key Path: /home/user/.ssh/my-key.pem
+
+Database Host: mydb.cluster-abc123.us-east-1.rds.amazonaws.com
+Database Port: 5432
+```
+
+<Aside type="caution">
+**Host key verification is not yet implemented in SoftDB v1.** SoftDB accepts any SSH server host key without verification. Only use SSH tunneling with SSH servers you trust. A malicious server could intercept your database credentials.
+</Aside>
+
+## Troubleshooting
+
+### SSH connection refused
+
+```
+SSH tunnel: connect to SSH server bastion.example.com:22: connection refused
+```
+
+The SSH server isn't reachable on port 22. Check that the server is running, the port is correct, and your firewall allows outbound connections on port 22.
+
+### Authentication failed
+
+```
+SSH tunnel: ssh: handshake failed: ssh: unable to authenticate
+```
+
+Wrong username, password, or key. Verify you can connect manually with `ssh -i /path/to/key user@host`. If using a key, check that the public key is in `~/.ssh/authorized_keys` on the server.
+
+### Key file not found
+
+```
+SSH tunnel: read private key "/home/user/.ssh/id_rsa": no such file or directory
+```
+
+The path to the private key is wrong. Use an absolute path and verify the file exists.
+
+### Database connection refused through tunnel
+
+If the SSH tunnel connects successfully but the database connection fails, the database host/port as seen from the SSH server is wrong. Try connecting to the database directly from the SSH server with `psql` or `mysql` to verify the host and port.

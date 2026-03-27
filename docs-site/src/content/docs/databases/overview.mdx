@@ -1,0 +1,121 @@
+---
+title: Connection Management
+description: Create, organize, and manage database connections in SoftDB
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+SoftDB stores all your database connections locally, encrypted with AES-256-GCM. You can connect to as many databases as you want and switch between them using tabs — each connection gets its own query editor, schema tree, and AI chat history.
+
+## Creating a Connection
+
+<Steps>
+
+1. **Open the Connection Hub** — this is the home screen when you launch SoftDB. Click **New Connection** (or press `Ctrl+N` / `Cmd+N`).
+
+2. **Choose a database type** — select from PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift, or Redis. The form fields update automatically for the selected type.
+
+3. **Fill in the connection details** — host, port, credentials, and database name. For SQLite, use the file picker to browse to your `.db` file. For MongoDB, you can switch to URI mode for Atlas connections.
+
+4. **Test the connection** — click **Test Connection** before saving. SoftDB opens a temporary connection, pings the server, and closes it. You'll see a green checkmark on success or an error message with the exact failure reason.
+
+5. **Save** — once the test passes, click **Save**. The connection appears in your hub and is ready to open.
+
+</Steps>
+
+## Connection Form Fields
+
+| Field | Description |
+|-------|-------------|
+| **Connection Name** | A label for this connection. Auto-generated from type/host/port, but you can override it. |
+| **Database Type** | PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, Redshift, or Redis. |
+| **Host** | Hostname or IP address of the database server. Defaults to `localhost`. |
+| **Port** | TCP port. Pre-filled with the default for the selected type. |
+| **Database** | The specific database to connect to. Optional for PostgreSQL and MySQL (enables multi-DB browsing when left blank). |
+| **Username** | Login username for the database server. |
+| **Password** | Login password. Stored encrypted with AES-256-GCM. |
+| **SSL Mode** | TLS/SSL mode for the connection. Options vary by database type. |
+| **Safe Mode** | When enabled, blocks `DROP`, `DELETE`, and `TRUNCATE` statements. Useful for production connections. |
+
+### SQLite-specific fields
+
+| Field | Description |
+|-------|-------------|
+| **File Path** | Absolute path to the `.db`, `.sqlite`, or `.sqlite3` file. Use the Browse button to pick a file. |
+
+### MongoDB URI mode
+
+For MongoDB Atlas or any connection that requires a full URI (including `mongodb+srv://`), toggle **Use URI** in the connection form. This replaces the individual host/port/credentials fields with a single URI input.
+
+```
+mongodb+srv://username:password@cluster.mongodb.net/mydb?retryWrites=true&w=majority
+```
+
+## Testing Connections
+
+The **Test Connection** button creates a temporary driver, connects to the server, sends a ping, and immediately disconnects. It does not save anything. Use it to verify credentials and network access before saving.
+
+If the test fails, the error message comes directly from the database driver — it'll say things like `connection refused`, `authentication failed`, or `SSL required`. These messages are specific enough to diagnose most problems without guessing.
+
+## Connection Status
+
+Each connection in the hub shows one of three statuses:
+
+| Status | Meaning |
+|--------|---------|
+| **Connected** | An active driver is open and the connection is live. |
+| **Offline** | The connection was explicitly disconnected, or a previous connection attempt failed. |
+| **Idle** | The connection has been saved but never opened in this session. |
+
+SoftDB doesn't maintain persistent background connections. When you close a connection tab, the driver disconnects. The next time you open that connection, it reconnects fresh.
+
+## SSL/TLS Modes
+
+SSL mode options differ by database type:
+
+<Tabs>
+<TabItem label="PostgreSQL / Redshift">
+
+| Mode | Description |
+|------|-------------|
+| `disable` | No TLS. Default for local development. |
+| `require` | Require TLS but don't verify the certificate. |
+| `verify-ca` | Require TLS and verify the server certificate against a CA. |
+| `verify-full` | Require TLS, verify the certificate, and check the hostname. |
+
+</TabItem>
+<TabItem label="MySQL / MariaDB">
+
+| Mode | Description |
+|------|-------------|
+| `disable` | No TLS. |
+| `require` | Require TLS, skip certificate verification. |
+| `verify-ca` | Require TLS and verify the CA. |
+| `verify-full` | Require TLS, verify CA, and verify hostname. |
+
+</TabItem>
+</Tabs>
+
+## SSH Tunneling
+
+SoftDB supports SSH tunneling for all database types except SQLite. When enabled, SoftDB opens an SSH connection to a bastion host and forwards a random local port to the database server. The database driver then connects to `127.0.0.1:<local-port>` instead of the remote host directly.
+
+See the [SSH Tunneling](/databases/ssh-tunneling) page for full setup instructions.
+
+## Safe Mode
+
+Safe Mode is a per-connection toggle that blocks destructive SQL statements before they reach the database. When enabled, any query containing `DROP`, `DELETE`, or `TRUNCATE` is rejected with an error — the statement never executes.
+
+This is useful for production connections where you want a safety net against accidental data loss. You can still run these statements by temporarily disabling Safe Mode in the connection settings.
+
+## Managing Connections
+
+**Edit** — click the pencil icon on any connection card to reopen the connection form with the existing values pre-filled. You can change any field, including the password. The connection is re-tested before saving.
+
+**Delete** — click the trash icon to remove a connection. If the connection is currently active, SoftDB disconnects it first. Deletion is permanent and cannot be undone.
+
+## Workspace Export and Import
+
+You can export all your saved connections to a JSON file and import them on another machine. Passwords are included in the export (still encrypted), so treat the export file as sensitive.
+
+To export: open **Settings** and click **Export Workspace**. To import: click **Import Workspace** and select the JSON file. Imported connections are merged with existing ones — duplicates (matched by ID) are skipped.

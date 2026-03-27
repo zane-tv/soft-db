@@ -1,0 +1,221 @@
+---
+title: PostgreSQL
+description: Connect to PostgreSQL databases in SoftDB — multi-DB browsing, schema support, EXPLAIN, and full structure designer.
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+SoftDB provides full PostgreSQL support: multi-database browsing, schema introspection, EXPLAIN visualization, a complete structure designer, and transaction-aware query execution.
+
+## Quick Setup
+
+<Steps>
+
+1. Open the Connection Hub and click **New Connection**.
+
+2. Select **PostgreSQL** as the database type.
+
+3. Fill in your connection details:
+   - **Host**: `localhost` (or your server address)
+   - **Port**: `5432`
+   - **Username**: `postgres` (or your user)
+   - **Password**: your password
+   - **Database**: leave blank to browse all databases, or enter a specific database name
+
+4. Click **Test Connection** to verify, then **Save**.
+
+5. Click the connection to open it. The sidebar shows your databases, schemas, tables, views, and functions.
+
+</Steps>
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| Host | `localhost` | Hostname or IP of the PostgreSQL server |
+| Port | `5432` | Standard PostgreSQL port |
+| Username | — | Required |
+| Password | — | Stored encrypted |
+| Database | — | Optional. Leave blank to enable multi-DB browsing |
+| SSL Mode | `disable` | See SSL modes below |
+
+### SSL Modes
+
+| Mode | Description |
+|------|-------------|
+| `disable` | No TLS. Fine for local development. |
+| `require` | Require TLS, skip certificate verification. |
+| `verify-ca` | Require TLS and verify the server certificate against a CA. |
+| `verify-full` | Require TLS, verify the certificate, and check the hostname. |
+
+## Multi-Database Browsing
+
+When you leave the **Database** field blank, SoftDB connects to the `postgres` maintenance database and queries `pg_database` to list all non-template databases on the server. The sidebar shows a three-level tree:
+
+```
+Connection
+└── my_app_db
+    └── public (schema)
+        ├── users
+        ├── orders
+        └── products
+└── analytics_db
+    └── public
+        └── events
+```
+
+Clicking a table in any database opens it in the table explorer. SoftDB opens a separate connection to that database to fetch its schema — PostgreSQL requires a full reconnect to query a different database.
+
+If you specify a database name in the connection settings, only that database appears in the tree.
+
+## Schema Support
+
+SoftDB reads tables, views, and functions from the `public` schema by default. The sidebar also lists other schemas (excluding `pg_%` and `information_schema`) so you can navigate across schema boundaries.
+
+Column introspection includes:
+- Column name, data type, and ordinal position
+- Nullable flag
+- Default value
+- Primary key and unique constraint flags
+
+Index introspection shows index name, columns, uniqueness, and whether it's the primary key index.
+
+Foreign key introspection shows constraint name, column, referenced table and column, and ON UPDATE / ON DELETE rules.
+
+## Structure Designer
+
+The structure designer lets you create and modify tables visually without writing DDL. Supported operations:
+
+| Operation | Supported | Notes |
+|-----------|-----------|-------|
+| Create table | Yes | |
+| Add column | Yes | |
+| Rename column | Yes | |
+| Change column type | Yes | Requires confirmation — type conversions can fail or cause table rewrites depending on existing data |
+| Change column default | Yes | |
+| Change column nullability | Yes | |
+| Drop column | Yes | Destructive, requires confirmation |
+
+## SQL Examples
+
+### JSONB queries
+
+```sql
+-- Find users with a specific preference
+SELECT id, name, preferences->>'theme' AS theme
+FROM users
+WHERE preferences @> '{"notifications": true}';
+
+-- Index a JSONB field for performance
+CREATE INDEX idx_users_preferences ON users USING gin(preferences);
+```
+
+### Window functions
+
+```sql
+-- Running total of revenue per day
+SELECT
+  order_date,
+  daily_revenue,
+  SUM(daily_revenue) OVER (ORDER BY order_date) AS running_total
+FROM (
+  SELECT DATE(created_at) AS order_date, SUM(amount) AS daily_revenue
+  FROM orders
+  GROUP BY DATE(created_at)
+) daily;
+```
+
+### CTE with RETURNING
+
+```sql
+-- Archive old orders and return what was moved
+WITH archived AS (
+  DELETE FROM orders
+  WHERE created_at < NOW() - INTERVAL '1 year'
+  RETURNING *
+)
+INSERT INTO orders_archive
+SELECT * FROM archived;
+```
+
+### Full-text search
+
+```sql
+-- Search articles by content
+SELECT id, title, ts_rank(search_vector, query) AS rank
+FROM articles, to_tsquery('english', 'database & performance') query
+WHERE search_vector @@ query
+ORDER BY rank DESC
+LIMIT 20;
+```
+
+### EXPLAIN
+
+```sql
+-- Analyze a query execution plan
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT * FROM orders WHERE customer_id = 42;
+```
+
+SoftDB renders EXPLAIN output in the results grid. For `EXPLAIN ANALYZE`, you'll see actual row counts and timing alongside the plan.
+
+## Transactions
+
+SoftDB supports explicit transactions in the SQL editor. You can run multi-statement transactions:
+
+```sql
+BEGIN;
+
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+
+COMMIT;
+```
+
+If any statement fails, run `ROLLBACK` to undo the partial changes. SoftDB doesn't auto-commit between statements in the same editor execution.
+
+## Troubleshooting
+
+### Connection refused
+
+```
+failed to ping postgres: dial tcp 127.0.0.1:5432: connect: connection refused
+```
+
+PostgreSQL isn't running, or it's listening on a different port. Check with `pg_lsclusters` (Linux) or look at the PostgreSQL service status. Verify the port in `postgresql.conf` (`listen_addresses` and `port`).
+
+### Authentication failed
+
+```
+failed to ping postgres: FATAL: password authentication failed for user "postgres"
+```
+
+Wrong username or password. Double-check your credentials. If you're using `peer` authentication locally, you may need to connect as the OS user that owns the PostgreSQL cluster.
+
+### Database does not exist
+
+```
+failed to ping postgres: FATAL: database "mydb" does not exist
+```
+
+The database name is wrong, or the database hasn't been created yet. Run `\l` in `psql` to list available databases, or leave the Database field blank to browse all databases.
+
+### Permission denied
+
+```
+ERROR: permission denied for table users
+```
+
+The connected user doesn't have SELECT privileges on that table. Grant access with:
+
+```sql
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO myuser;
+```
+
+### SSL required
+
+```
+failed to ping postgres: FATAL: no pg_hba.conf entry for host "...", SSL off
+```
+
+The server requires SSL. Set SSL Mode to `require` in the connection settings.

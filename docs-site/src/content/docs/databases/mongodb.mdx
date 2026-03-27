@@ -1,0 +1,224 @@
+---
+title: MongoDB
+description: Connect to MongoDB in SoftDB — collection browsing, JSON command syntax, schema inference, and JSON Schema Validation editor.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+SoftDB supports MongoDB with multi-database browsing, collection exploration, schema inference from sampled documents, a native JSON Schema Validation editor, and a JSON-based query interface.
+
+## Quick Setup
+
+<Steps>
+
+1. Open the Connection Hub and click **New Connection**.
+
+2. Select **MongoDB** as the database type.
+
+3. For a local server, fill in:
+   - **Host**: `localhost`
+   - **Port**: `27017`
+   - **Database**: optional — leave blank to browse all databases
+
+4. For MongoDB Atlas or any `mongodb+srv://` connection, toggle **Use URI** and paste your full connection string.
+
+5. Click **Test Connection**, then **Save**.
+
+</Steps>
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| Host | `localhost` | MongoDB server hostname or IP |
+| Port | `27017` | Standard MongoDB port |
+| Username | — | Optional for local servers without auth |
+| Password | — | Stored encrypted |
+| Database | — | Optional. Leave blank to browse all databases |
+| URI | — | Full connection string (URI mode only) |
+
+### URI Mode for Atlas
+
+Toggle **Use URI** to enter a full MongoDB connection string. This is the recommended approach for MongoDB Atlas:
+
+```
+mongodb+srv://username:password@cluster0.abc123.mongodb.net/mydb?retryWrites=true&w=majority
+```
+
+When using URI mode, the host, port, username, password, and database fields are ignored. SoftDB parses the database name from the URI path if present.
+
+## Multi-Database Browsing
+
+When you leave the **Database** field blank, SoftDB calls `listDatabaseNames` and filters out system databases (`admin`, `local`, `config`). The sidebar shows a three-level tree:
+
+```
+Connection
+└── my_app
+    ├── users
+    ├── orders
+    └── products
+└── analytics
+    └── events
+```
+
+Clicking a collection opens it in the table explorer. SoftDB samples up to 100 documents to infer the collection's field names and BSON types.
+
+## JSON Command Syntax
+
+<Aside type="caution">
+SoftDB uses a JSON command format for MongoDB queries, **not** the JavaScript shell syntax (`db.collection.find()`). Every query is a JSON object with a `collection` field and an `action` field.
+</Aside>
+
+The basic structure is:
+
+```json
+{
+  "collection": "users",
+  "action": "find",
+  "filter": {},
+  "limit": 100
+}
+```
+
+If you omit `action`, it defaults to `find`.
+
+### Supported actions
+
+| Action | Description |
+|--------|-------------|
+| `find` | Query documents with optional filter, limit, and skip |
+| `count` | Count documents matching a filter |
+| `insert` | Insert a single document |
+| `delete` | Delete documents matching a filter |
+| `updateOne` | Update the first matching document |
+| `updateMany` | Update all matching documents |
+| `aggregate` | Run an aggregation pipeline |
+| `distinct` | Get distinct values for a field |
+| `createIndex` | Create an index on a collection |
+| `dropIndex` | Drop a named index |
+| `explain` | Get the query execution plan |
+
+## Query Examples
+
+### Find with filter
+
+```json
+{
+  "collection": "users",
+  "action": "find",
+  "filter": { "age": { "$gt": 25 } },
+  "limit": 10
+}
+```
+
+### Count documents
+
+```json
+{
+  "collection": "orders",
+  "action": "count",
+  "filter": { "status": "pending" }
+}
+```
+
+### Aggregation pipeline
+
+```json
+{
+  "collection": "orders",
+  "action": "aggregate",
+  "pipeline": [
+    { "$match": { "status": "completed" } },
+    { "$group": { "_id": "$customer_id", "total": { "$sum": "$amount" } } },
+    { "$sort": { "total": -1 } },
+    { "$limit": 10 }
+  ]
+}
+```
+
+### Update documents
+
+```json
+{
+  "collection": "users",
+  "action": "updateMany",
+  "filter": { "plan": "free" },
+  "update": { "$set": { "trial_expires": null } }
+}
+```
+
+### Insert a document
+
+```json
+{
+  "collection": "products",
+  "action": "insert",
+  "document": {
+    "name": "Widget Pro",
+    "price": 29.99,
+    "tags": ["hardware", "featured"]
+  }
+}
+```
+
+### Distinct values
+
+```json
+{
+  "collection": "orders",
+  "action": "distinct",
+  "field": "status"
+}
+```
+
+### Batch queries
+
+You can run multiple queries in one execution by wrapping them in a JSON array. Results are merged into a single result set with a `__collection__` column added:
+
+```json
+[
+  { "collection": "users", "action": "count" },
+  { "collection": "orders", "action": "count" }
+]
+```
+
+## Schema Inference
+
+SoftDB doesn't require a fixed schema for MongoDB collections. When you open a collection, it samples up to 100 documents and infers field names and BSON types. The inferred schema appears in the sidebar column list and is used for AI autocomplete suggestions.
+
+BSON types are mapped to readable names: `string`, `int`, `long`, `double`, `bool`, `object`, `array`, `objectId`, `date`, `timestamp`, `decimal`, `binData`, `regex`, and `null`.
+
+## JSON Schema Validation Editor
+
+Each collection can have a JSON Schema validator that MongoDB enforces on insert and update. SoftDB includes a dedicated editor for this:
+
+1. Open a collection in the table explorer.
+2. Click the **Schema** tab (or the schema icon in the toolbar).
+3. Edit the JSON Schema in the Monaco editor.
+4. Click **Apply** to save the validator to MongoDB.
+
+SoftDB applies validators with `validationLevel: "moderate"` and `validationAction: "warn"` by default, so existing documents that don't match the schema won't cause errors — only new writes are checked.
+
+## Troubleshooting
+
+### Connection refused
+
+```
+failed to ping mongodb: server selection error: ... connection refused
+```
+
+MongoDB isn't running, or it's listening on a different port. Check with `systemctl status mongod` or `brew services list`. Verify the port in `/etc/mongod.conf`.
+
+### Authentication failed
+
+```
+failed to ping mongodb: (AuthenticationFailed) Authentication failed
+```
+
+Wrong username or password, or the user doesn't exist in the `admin` database. Check your credentials and ensure the user has the right roles.
+
+### Atlas connection string format
+
+Atlas connection strings use `mongodb+srv://` and require the **Use URI** toggle. The standard `host:port` fields don't work for Atlas. Copy the connection string from the Atlas dashboard (Connect > Drivers) and paste it into the URI field.
+
+Make sure your IP address is in the Atlas IP Access List, and that the database user has the correct permissions.

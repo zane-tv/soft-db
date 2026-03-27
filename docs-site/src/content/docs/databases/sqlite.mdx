@@ -1,0 +1,147 @@
+---
+title: SQLite
+description: Connect to SQLite database files in SoftDB — file picker, PRAGMA commands, index introspection, and structure designer.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+SQLite is a single-file database with no server process. SoftDB opens SQLite files directly — no host, port, or credentials needed. It enables WAL mode and foreign key enforcement automatically on connect.
+
+## Quick Setup
+
+<Steps>
+
+1. Open the Connection Hub and click **New Connection**.
+
+2. Select **SQLite** as the database type.
+
+3. Click **Browse** to pick your `.db`, `.sqlite`, `.sqlite3`, or `.db3` file. You can also type the path directly.
+
+4. Click **Test Connection** to verify the file is readable, then **Save**.
+
+5. Open the connection. The sidebar shows all tables and views in the file.
+
+</Steps>
+
+## Connection Settings
+
+| Field | Notes |
+|-------|-------|
+| **File Path** | Absolute path to the SQLite database file. Required. |
+| **Connection Name** | Auto-generated from the filename, but you can rename it. |
+
+There are no host, port, username, or password fields for SQLite. SSH tunneling is also not available for SQLite connections.
+
+<Aside type="note">
+SoftDB opens SQLite files with WAL (Write-Ahead Logging) mode enabled and foreign key enforcement turned on. These settings improve concurrency and data integrity but don't change the file format.
+</Aside>
+
+## Features
+
+**Single-file database** — the entire database lives in one file. You can copy, move, or back it up by copying the file. SoftDB doesn't create any additional files beyond the standard SQLite WAL and SHM files (which are temporary).
+
+**Table and view browsing** — SoftDB reads tables and views from `sqlite_master`, excluding internal `sqlite_*` tables.
+
+**Column introspection** — uses `PRAGMA table_info()` to read column names, types, nullability, defaults, and primary key flags.
+
+**Index introspection** — uses `PRAGMA index_list()` and `PRAGMA index_info()` to show all indexes, their columns, and whether they're unique or primary.
+
+**Transactions** — SQLite supports full ACID transactions. You can run explicit `BEGIN` / `COMMIT` / `ROLLBACK` blocks in the SQL editor.
+
+## Structure Designer
+
+SQLite's `ALTER TABLE` support is intentionally limited. SoftDB reflects these limitations in the structure designer:
+
+| Operation | Supported | Notes |
+|-----------|-----------|-------|
+| Create table | Yes | |
+| Add column | Yes | Limited: can't add primary keys, unique constraints, or NOT NULL columns without a default value |
+| Rename column | Yes | |
+| Change column type | No | SQLite doesn't support `ALTER COLUMN` type changes |
+| Change column default | No | Not supported by SQLite ALTER TABLE |
+| Change column nullability | No | Not supported by SQLite ALTER TABLE |
+| Drop column | Yes | Requires a modern SQLite version; destructive, requires confirmation |
+
+If you need to change a column's type or nullability, the standard approach is to create a new table with the desired schema, copy the data, drop the old table, and rename the new one. SoftDB doesn't automate this process.
+
+## SQL Examples
+
+### Create a table
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+```
+
+### PRAGMA commands
+
+```sql
+-- Check database integrity
+PRAGMA integrity_check;
+
+-- List all tables
+SELECT name FROM sqlite_master WHERE type = 'table';
+
+-- Show table schema
+PRAGMA table_info('users');
+
+-- Show indexes on a table
+PRAGMA index_list('users');
+
+-- Check foreign key status
+PRAGMA foreign_keys;
+
+-- Show page size and cache settings
+PRAGMA page_size;
+PRAGMA cache_size;
+```
+
+### Full-text search (FTS5)
+
+```sql
+-- Create a full-text search table
+CREATE VIRTUAL TABLE articles_fts USING fts5(title, body, content='articles', content_rowid='id');
+
+-- Search
+SELECT rowid, title FROM articles_fts WHERE articles_fts MATCH 'database performance';
+```
+
+### JSON functions (SQLite 3.38+)
+
+```sql
+-- Extract a JSON field
+SELECT json_extract(metadata, '$.tags') FROM products;
+
+-- Filter by JSON value
+SELECT * FROM events WHERE json_extract(payload, '$.type') = 'click';
+```
+
+## Troubleshooting
+
+### File not found
+
+```
+failed to open sqlite: unable to open database file: no such file or directory
+```
+
+The path is wrong or the file doesn't exist. Use the Browse button to pick the file, or check that the path is correct and the file exists.
+
+### Database is locked
+
+```
+failed to ping sqlite: database is locked
+```
+
+Another process has the database open with an exclusive lock. Close any other applications that might have the file open (another database tool, your application in development mode, etc.). SQLite allows multiple readers but only one writer at a time.
+
+### Permission denied
+
+```
+failed to open sqlite: unable to open database file: permission denied
+```
+
+SoftDB doesn't have read (or write) permission on the file. Check the file permissions with `ls -la /path/to/database.db` and adjust with `chmod` if needed.

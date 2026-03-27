@@ -1,0 +1,194 @@
+---
+title: MySQL / MariaDB
+description: Connect to MySQL and MariaDB databases in SoftDB — multi-DB browsing, TLS modes, structure designer, and query examples.
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+SoftDB supports both MySQL and MariaDB through the same driver. You get multi-database browsing, full table and column introspection, TLS configuration, a structure designer, and transaction support.
+
+## Quick Setup
+
+<Steps>
+
+1. Open the Connection Hub and click **New Connection**.
+
+2. Select **MySQL** or **MariaDB** as the database type.
+
+3. Fill in your connection details:
+   - **Host**: `localhost`
+   - **Port**: `3306`
+   - **Username**: `root` (or your user)
+   - **Password**: your password
+   - **Database**: leave blank to browse all databases, or enter a specific database name
+
+4. Click **Test Connection**, then **Save**.
+
+5. Open the connection. The sidebar shows your databases, tables, views, and functions.
+
+</Steps>
+
+## Connection Settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| Host | `localhost` | Hostname or IP of the MySQL/MariaDB server |
+| Port | `3306` | Standard MySQL/MariaDB port |
+| Username | — | Required |
+| Password | — | Stored encrypted |
+| Database | — | Optional. Leave blank to enable multi-DB browsing |
+| SSL Mode | `disable` | See TLS modes below |
+
+## TLS Modes
+
+| Mode | Description |
+|------|-------------|
+| `disable` | No TLS. Default for local development. |
+| `require` | Require TLS, skip certificate verification. |
+| `verify-ca` | Require TLS and verify the server certificate against a CA. |
+| `verify-full` | Require TLS, verify the CA, and verify the hostname. |
+
+## Multi-Database Browsing
+
+When you leave the **Database** field blank, SoftDB runs `SHOW DATABASES` and filters out system databases (`information_schema`, `performance_schema`, `mysql`, `sys`). The sidebar shows a three-level tree:
+
+```
+Connection
+└── my_app
+    ├── users
+    ├── orders
+    └── products
+└── analytics
+    └── events
+```
+
+Unlike PostgreSQL, MySQL doesn't require a reconnect to switch databases. SoftDB issues a `USE <database>` statement to switch context, so browsing across databases is fast.
+
+If you specify a database name in the connection settings, only that database appears in the tree.
+
+## Structure Designer
+
+The structure designer supports creating and modifying tables visually. Supported operations:
+
+| Operation | Supported | Notes |
+|-----------|-----------|-------|
+| Create table | Yes | |
+| Add column | Yes | |
+| Rename column | Yes | Requires a modern MySQL or MariaDB server |
+| Change column type | Yes | Requires confirmation — rebuilds the full column definition |
+| Change column default | Yes | |
+| Change column nullability | Yes | Rebuilds the full column definition |
+| Drop column | Yes | Destructive, requires confirmation |
+
+<Aside type="caution">
+MySQL and MariaDB treat DDL statements (like `ALTER TABLE`) as implicit commits. If you apply multiple structure changes in one operation and one of them fails partway through, the earlier changes may already be committed and cannot be rolled back. Review your changes carefully before applying.
+</Aside>
+
+## SQL Examples
+
+### Basic JOIN
+
+```sql
+SELECT
+  u.id,
+  u.name,
+  COUNT(o.id) AS order_count,
+  SUM(o.total) AS total_spent
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+GROUP BY u.id, u.name
+ORDER BY total_spent DESC
+LIMIT 20;
+```
+
+### Subquery
+
+```sql
+-- Find users who have placed more orders than average
+SELECT id, name
+FROM users
+WHERE id IN (
+  SELECT user_id
+  FROM orders
+  GROUP BY user_id
+  HAVING COUNT(*) > (SELECT AVG(cnt) FROM (SELECT COUNT(*) AS cnt FROM orders GROUP BY user_id) t)
+);
+```
+
+### GROUP BY with HAVING
+
+```sql
+-- Products with more than 100 sales in the last 30 days
+SELECT
+  p.name,
+  SUM(oi.quantity) AS units_sold
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+JOIN orders o ON o.id = oi.order_id
+WHERE o.created_at >= NOW() - INTERVAL 30 DAY
+GROUP BY p.id, p.name
+HAVING units_sold > 100
+ORDER BY units_sold DESC;
+```
+
+### SHOW commands
+
+```sql
+-- Inspect table structure
+DESCRIBE users;
+
+-- Show indexes on a table
+SHOW INDEX FROM orders;
+
+-- Show current database
+SELECT DATABASE();
+```
+
+## Transactions
+
+MySQL and MariaDB support explicit transactions for DML statements:
+
+```sql
+START TRANSACTION;
+
+UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+UPDATE accounts SET balance = balance + 100 WHERE id = 2;
+
+COMMIT;
+```
+
+<Aside type="caution">
+DDL statements (`CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, etc.) cause an implicit commit in MySQL and MariaDB. You cannot roll back DDL inside a transaction. This is a fundamental MySQL/MariaDB behavior, not a SoftDB limitation.
+</Aside>
+
+## Troubleshooting
+
+### Connection refused
+
+```
+failed to ping mysql: dial tcp 127.0.0.1:3306: connect: connection refused
+```
+
+MySQL/MariaDB isn't running, or it's listening on a different port. Check the service status with `systemctl status mysql` or `systemctl status mariadb`. Verify the port in `/etc/mysql/my.cnf` or `/etc/my.cnf`.
+
+### Access denied
+
+```
+failed to ping mysql: Error 1045 (28000): Access denied for user 'root'@'localhost'
+```
+
+Wrong username or password. If you're connecting from a remote host, the user may not have remote access. Grant it with:
+
+```sql
+CREATE USER 'myuser'@'%' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON mydb.* TO 'myuser'@'%';
+FLUSH PRIVILEGES;
+```
+
+### SSL connection error
+
+```
+failed to ping mysql: x509: certificate signed by unknown authority
+```
+
+The server requires TLS but the certificate can't be verified. Try `require` mode first (skips verification). If you need full verification, ensure the CA certificate is trusted on your system.
