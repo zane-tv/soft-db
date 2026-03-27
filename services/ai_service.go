@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"soft-db/internal/driver"
 	"soft-db/internal/store"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -97,8 +98,20 @@ func (a *AIService) getProvider() AIProvider {
 
 // ─── Public Methods (Wails Bindings) ───
 
-// SendMessage sends a chat message and streams the response via events.
-func (a *AIService) SendMessage(connectionID, message, model string) error {
+func (a *AIService) GetMCPMode(connectionID string) bool {
+	val, err := a.store.GetSetting(fmt.Sprintf("ai_mcp_mode_%s", connectionID))
+	return err == nil && val == "true"
+}
+
+func (a *AIService) SetMCPMode(connectionID string, enabled bool) error {
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+	return a.store.SetSetting(fmt.Sprintf("ai_mcp_mode_%s", connectionID), val)
+}
+
+func (a *AIService) SendMessage(connectionID, message, model string, mcpMode bool) error {
 	if model == "" {
 		saved, err := a.store.GetSetting(fmt.Sprintf("ai_model_%s", connectionID))
 		if err == nil && saved != "" {
@@ -120,7 +133,7 @@ func (a *AIService) SendMessage(connectionID, message, model string) error {
 		Model:        model,
 	})
 
-	messages, err := a.buildMessages(connectionID)
+	messages, err := a.buildMessages(connectionID, mcpMode)
 	if err != nil {
 		return err
 	}
@@ -158,6 +171,16 @@ func (a *AIService) SendMessage(connectionID, message, model string) error {
 				slog.Error("Stream consume error", "error", err, "connectionId", connectionID)
 			}
 			return
+		}
+
+		if mcpMode {
+			if extra := a.autoExecuteReadOnlyBlocks(connectionID, fullContent); extra != "" {
+				fullContent += extra
+				a.emitEvent(connectionID, "ai:chunk", map[string]interface{}{
+					"content": extra,
+					"role":    "assistant",
+				})
+			}
 		}
 
 		a.store.AddChatMessage(store.ChatMessage{
@@ -275,10 +298,13 @@ func (a *AIService) consumeStream(ctx context.Context, stream io.ReadCloser, con
 	return fullContent.String(), nil
 }
 
-// buildMessages constructs the full ChatMessage slice (system + history) for the provider.
-func (a *AIService) buildMessages(connectionID string) ([]ChatMessage, error) {
+func (a *AIService) buildMessages(connectionID string, mcpMode bool) ([]ChatMessage, error) {
+	systemPrompt := a.buildSystemPrompt(connectionID)
+	if mcpMode {
+		systemPrompt = a.buildMCPSystemPrompt(connectionID)
+	}
 	messages := []ChatMessage{
-		{Role: "system", Content: a.buildSystemPrompt(connectionID)},
+		{Role: "system", Content: systemPrompt},
 	}
 
 	history, _ := a.store.ListChatMessages(connectionID, 20)
@@ -412,6 +438,183 @@ func (a *AIService) buildSystemPrompt(connectionID string) string {
 		sb.WriteString("\nWhen generating SQL, format it in code blocks.")
 	}
 	sb.WriteString("\nRespond in the same language the user writes in.")
+
+	return sb.String()
+}
+
+// ─── MCP Mode ───
+
+func (a *AIService) buildMCPSystemPrompt(connectionID string) string {
+	base := a.buildSystemPrompt(connectionID)
+
+	var sb strings.Builder
+	sb.WriteString(base)
+
+	sb.WriteString("\n\n--- MCP MODE (READ-ONLY DATABASE ACCESS) ---")
+	sb.WriteString("\nYou have READ-ONLY access to the database. When you need to query data, write a SELECT query in a ```sql code block.")
+	sb.WriteString("\nSoftDB will auto-execute it and append results below your response.")
+	sb.WriteString("\nOnly SELECT, SHOW, DESCRIBE, EXPLAIN are executed. Write operations will NOT run.")
+
+	tables, err := a.schemaService.GetTables(connectionID)
+	if err != nil || len(tables) == 0 {
+		return sb.String()
+	}
+
+	limit := 5
+	if len(tables) < limit {
+		limit = len(tables)
+	}
+
+	sb.WriteString("\n\nSample data from tables:")
+	queryService := a.getQueryService()
+	for i := 0; i < limit; i++ {
+		t := tables[i]
+		if queryService == nil {
+			break
+		}
+		result, err := queryService.ExecuteQuery(connectionID, fmt.Sprintf("SELECT * FROM %s LIMIT 3", t.Name))
+		if err != nil || result.Error != "" || len(result.Rows) == 0 {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("\n\n%s (sample):\n", t.Name))
+		sb.WriteString(formatQueryResultMarkdown(result, 3))
+	}
+
+	fks := a.collectForeignKeys(connectionID, tables)
+	if len(fks) > 0 {
+		sb.WriteString("\n\nForeign key relationships:")
+		for _, fk := range fks {
+			sb.WriteString(fmt.Sprintf("\n- %s.%s → %s.%s", fk.TableName, fk.ColumnName, fk.ReferencedTable, fk.ReferencedColumn))
+		}
+	}
+
+	return sb.String()
+}
+
+func (a *AIService) collectForeignKeys(connectionID string, tables []driver.TableInfo) []driver.ForeignKeyInfo {
+	var all []driver.ForeignKeyInfo
+	for _, t := range tables {
+		fks, err := a.schemaService.GetTableForeignKeys(connectionID, "", t.Name)
+		if err != nil {
+			continue
+		}
+		all = append(all, fks...)
+	}
+	return all
+}
+
+func (a *AIService) getQueryService() *QueryService {
+	if a.connService == nil || a.settingsService == nil || a.store == nil {
+		return nil
+	}
+	return NewQueryService(a.connService, a.settingsService, a.store)
+}
+
+var sqlBlockRe = regexp.MustCompile("(?s)```sql\\s*\n(.*?)```")
+
+func extractSQLBlocks(content string) []string {
+	matches := sqlBlockRe.FindAllStringSubmatch(content, -1)
+	var blocks []string
+	for _, m := range matches {
+		q := strings.TrimSpace(m[1])
+		if q != "" {
+			blocks = append(blocks, q)
+		}
+	}
+	return blocks
+}
+
+func isReadOnlyQuery(query string) bool {
+	trimmed := strings.TrimSpace(strings.ToUpper(query))
+	if trimmed == "" {
+		return false
+	}
+	first := strings.Fields(trimmed)[0]
+	switch first {
+	case "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "WITH", "PRAGMA":
+		return true
+	}
+	return false
+}
+
+func (a *AIService) autoExecuteReadOnlyBlocks(connectionID, content string) string {
+	blocks := extractSQLBlocks(content)
+	if len(blocks) == 0 {
+		return ""
+	}
+
+	queryService := a.getQueryService()
+	if queryService == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, sql := range blocks {
+		if !isReadOnlyQuery(sql) {
+			sb.WriteString(fmt.Sprintf("\n\n> ⚠️ `%s` — skipped (read-only mode: only SELECT/SHOW/DESCRIBE/EXPLAIN are auto-executed)\n", truncateStr(sql, 80)))
+			continue
+		}
+		result, err := queryService.ExecuteQuery(connectionID, sql)
+		if err != nil {
+			sb.WriteString(fmt.Sprintf("\n\n> ❌ Query error: %s\n", err.Error()))
+			continue
+		}
+		if result.Error != "" {
+			sb.WriteString(fmt.Sprintf("\n\n> ❌ %s\n", result.Error))
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("\n\n**Query Results** (%d rows, %.1fms):\n", result.RowCount, result.ExecutionTime))
+		sb.WriteString(formatQueryResultMarkdown(result, 20))
+	}
+
+	return sb.String()
+}
+
+func formatQueryResultMarkdown(result *driver.QueryResult, maxRows int) string {
+	if len(result.Columns) == 0 {
+		return "_No columns_\n"
+	}
+
+	var sb strings.Builder
+
+	for i, col := range result.Columns {
+		if i > 0 {
+			sb.WriteString(" | ")
+		}
+		sb.WriteString(col.Name)
+	}
+	sb.WriteString("\n")
+
+	for i := range result.Columns {
+		if i > 0 {
+			sb.WriteString(" | ")
+		}
+		sb.WriteString("---")
+	}
+	sb.WriteString("\n")
+
+	rows := result.Rows
+	if len(rows) > maxRows {
+		rows = rows[:maxRows]
+	}
+	for _, row := range rows {
+		for i, col := range result.Columns {
+			if i > 0 {
+				sb.WriteString(" | ")
+			}
+			v := row[col.Name]
+			if v == nil {
+				sb.WriteString("NULL")
+			} else {
+				sb.WriteString(fmt.Sprintf("%v", v))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	if int64(len(result.Rows)) > int64(maxRows) {
+		sb.WriteString(fmt.Sprintf("_... and %d more rows_\n", int64(len(result.Rows))-int64(maxRows)))
+	}
 
 	return sb.String()
 }

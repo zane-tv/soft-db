@@ -166,13 +166,12 @@ export function useAIChat(connectionId: string) {
   }, [connectionId, queryClient])
 
   // Send message
-  const sendMessage = useCallback(async (message: string, model?: string) => {
+  const sendMessage = useCallback(async (message: string, model?: string, mcpMode?: boolean) => {
     setError(null)
     setIsStreaming(true)
     setStreamingContent('')
     streamingRef.current = ''
 
-    // Optimistically add user message to history
     const userMessage: ChatMessage = {
       connectionId,
       role: 'user',
@@ -187,7 +186,7 @@ export function useAIChat(connectionId: string) {
     )
 
     try {
-      await AIService.SendMessage(connectionId, message, model ?? '')
+      await AIService.SendMessage(connectionId, message, model ?? '', mcpMode ?? false)
     } catch (e) {
       setIsStreaming(false)
       // Rollback the optimistically-added user message

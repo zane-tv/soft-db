@@ -397,6 +397,13 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   color: var(--color-text-main);
   background: var(--color-bg-hover);
 }
+.ai-mcp-active {
+  color: var(--color-primary) !important;
+  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+.ai-mcp-active:hover {
+  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
 
 /* Account bar */
 .ai-account-bar {

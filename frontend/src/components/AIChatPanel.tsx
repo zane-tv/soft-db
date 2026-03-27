@@ -2,7 +2,10 @@
 
 import DOMPurify from 'dompurify'
 import { useState, useRef, useEffect, useCallback, type FormEvent } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { useAIChat, useAuth, useModelSelection, type AIError } from '@/hooks/useAIChat'
+import { useConnections } from '@/hooks/useConnections'
+import * as AIService from '../../bindings/soft-db/services/aiservice'
 
 interface AIChatPanelProps {
   connectionId: string
@@ -27,6 +30,22 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
     error, sendMessage, stopStreaming, clearChat, clearError,
     canSend, rateLimitCooldown,
   } = useAIChat(connectionId)
+
+  const { data: connections = [] } = useConnections()
+  const currentConn = connections.find(c => c.id === connectionId)
+  const connHasMCP = currentConn?.mcpEnabled ?? false
+
+  const mcpModeQuery = useQuery({
+    queryKey: ['ai', 'mcpMode', connectionId],
+    queryFn: () => AIService.GetMCPMode(connectionId),
+    enabled: !!connectionId && connHasMCP,
+  })
+  const mcpModeEnabled = connHasMCP && (mcpModeQuery.data ?? false)
+
+  const setMCPModeMutation = useMutation({
+    mutationFn: (enabled: boolean) => AIService.SetMCPMode(connectionId, enabled),
+    onSuccess: () => mcpModeQuery.refetch(),
+  })
 
   const [input, setInput] = useState('')
   const [panelWidth, setPanelWidth] = useState(() => {
@@ -118,7 +137,7 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
     if (!msg || !canSend) return
     setInput('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
-    sendMessage(msg, selectedModel)
+    sendMessage(msg, selectedModel, mcpModeEnabled)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -155,6 +174,16 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
           <span className="ai-chat-title">AI Assistant</span>
         </div>
         <div className="ai-chat-header-actions">
+          {isLoggedIn && connHasMCP && (
+            <button
+              type="button"
+              className={`ai-icon-btn ${mcpModeEnabled ? 'ai-mcp-active' : ''}`}
+              onClick={() => setMCPModeMutation.mutate(!mcpModeEnabled)}
+              title={mcpModeEnabled ? 'MCP Mode: ON — AI can query your database (read-only)' : 'MCP Mode: OFF — Schema context only'}
+            >
+              <span className={`material-symbols-outlined text-[14px] ${mcpModeEnabled ? 'text-primary' : ''}`}>hub</span>
+            </button>
+          )}
           {isLoggedIn && (
             <select
               className="ai-model-select"
