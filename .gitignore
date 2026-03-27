@@ -19,3 +19,7 @@ soft-db.exe
 testdata/sample.db-shm
 testdata/sample.db-wal
 .sisyphus/
+
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/
