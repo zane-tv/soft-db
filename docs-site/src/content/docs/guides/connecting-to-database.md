@@ -4,3 +4,5 @@ description: Step-by-step guide to creating and managing database connections in
 ---
 
 SoftDB supports multiple simultaneous database connections with encrypted credential storage.
+
+![SoftDB Connection Hub](../../../assets/screenshots/connection-hub.png)

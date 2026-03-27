@@ -7,6 +7,7 @@ export default defineConfig({
     starlight({
       title: 'SoftDB Docs',
       description: 'Documentation for SoftDB — Modern Database Management Tool',
+      favicon: '/favicon.png',
       logo: {
         src: './src/assets/logo.png',
       },
