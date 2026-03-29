@@ -7,7 +7,7 @@ import {
   useConnect,
   useDisconnect,
   usePingAll,
-  useSaveConnection,
+  useSetMCPEnabled,
 } from '@/hooks/useConnections'
 import { ConnectionConfig, DatabaseType } from '../../bindings/soft-db/internal/driver/models'
 import { ConnectionModal } from '@/components/ConnectionModal'
@@ -92,7 +92,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
   const connectMutation = useConnect()
   const disconnectMutation = useDisconnect()
   const deleteMutation = useDeleteConnection()
-  const saveMutation = useSaveConnection()
+  const mcpToggleMutation = useSetMCPEnabled()
 
   // Filter connections by search + type + status
   const filtered = useMemo(() => {
@@ -332,7 +332,7 @@ export function ConnectionHub({ onConnect }: ConnectionHubProps) {
                     contextMenu?.id === conn.id ? null : { id: conn.id, x: e.clientX, y: e.clientY }
                   )
                 }}
-                onMCPToggle={(enabled) => saveMutation.mutate({ ...conn, mcpEnabled: enabled })}
+                onMCPToggle={(enabled) => mcpToggleMutation.mutate({ id: conn.id, enabled })}
               />
             ))}
 
@@ -486,14 +486,15 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick, onMCPToggle }: Con
         <div className="flex items-center gap-1">
           <button
             onClick={(e) => { e.stopPropagation(); onMCPToggle(!(conn.mcpEnabled ?? true)) }}
-            title={conn.mcpEnabled ?? true ? 'Disable MCP access' : 'Enable MCP access'}
-            className={`opacity-0 group-hover:opacity-100 p-1.5 rounded-md transition-all duration-200 ${
+            title={conn.mcpEnabled ?? true ? 'MCP enabled — click to disable' : 'MCP disabled — click to enable'}
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-all duration-200 ${
               conn.mcpEnabled ?? true
-                ? 'text-primary/70 hover:text-primary hover:bg-primary/10'
-                : 'text-text-muted/40 hover:text-text-muted hover:bg-white/5'
+                ? 'bg-primary/15 text-primary border border-primary/25 hover:bg-primary/25'
+                : 'opacity-0 group-hover:opacity-100 bg-white/5 text-text-muted/50 border border-transparent hover:text-text-muted hover:bg-white/10'
             }`}
           >
-            <MCP size={16} />
+            <MCP size={12} />
+            MCP
           </button>
           <button
             onClick={onMenuClick}

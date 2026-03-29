@@ -63,12 +63,16 @@ func (s *ConnectionService) ListConnections() ([]driver.ConnectionConfig, error)
 func (s *ConnectionService) SaveConnection(cfg driver.ConnectionConfig) (driver.ConnectionConfig, error) {
 	if cfg.ID == "" {
 		cfg.ID = uuid.New().String()
+		cfg.Status = "offline"
 	}
-	cfg.Status = "offline"
 	if err := s.store.SaveConnection(cfg); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+func (s *ConnectionService) SetMCPEnabled(id string, enabled bool) error {
+	return s.store.SetMCPEnabled(id, enabled)
 }
 
 // DeleteConnection removes a connection (disconnects first if active)

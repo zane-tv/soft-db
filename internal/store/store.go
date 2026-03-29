@@ -386,6 +386,15 @@ func (s *Store) SaveConnection(cfg driver.ConnectionConfig) error {
 	return err
 }
 
+func (s *Store) SetMCPEnabled(id string, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE connections SET mcp_enabled = ? WHERE id = ?`, v, id)
+	return err
+}
+
 func (s *Store) LoadConnections() ([]driver.ConnectionConfig, error) {
 	rows, err := s.db.Query(`
 		SELECT id, name, type, host, port, database_name, username, password, file_path, uri, ssl_mode, last_used,

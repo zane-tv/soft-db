@@ -99,6 +99,13 @@ func main() {
 		},
 	})
 
+	// Auto-start MCP server if enabled in settings
+	if settings, err := settingsService.GetSettings(); err == nil && settings.MCPEnabled {
+		if err := mcpService.StartServer(); err != nil {
+			log.Printf("MCP auto-start failed: %v", err)
+		}
+	}
+
 	// Run
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

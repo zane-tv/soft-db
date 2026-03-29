@@ -840,6 +840,7 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
       {/* AI Chat Panel (right sidebar) */}
       <AIChatPanel
         connectionId={connectionId}
+        database={selectedDatabase || undefined}
         visible={aiPanelOpen}
         onClose={() => setAiPanelOpen(false)}
         onInsertToEditor={(code) => {

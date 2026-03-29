@@ -111,7 +111,12 @@ func (a *AIService) SetMCPMode(connectionID string, enabled bool) error {
 	return a.store.SetSetting(fmt.Sprintf("ai_mcp_mode_%s", connectionID), val)
 }
 
-func (a *AIService) SendMessage(connectionID, message, model string, mcpMode bool) error {
+func (a *AIService) SendMessage(connectionID, message, model string, mcpMode bool, database ...string) error {
+	db := ""
+	if len(database) > 0 {
+		db = database[0]
+	}
+
 	if model == "" {
 		saved, err := a.store.GetSetting(fmt.Sprintf("ai_model_%s", connectionID))
 		if err == nil && saved != "" {
@@ -133,7 +138,7 @@ func (a *AIService) SendMessage(connectionID, message, model string, mcpMode boo
 		Model:        model,
 	})
 
-	messages, err := a.buildMessages(connectionID, mcpMode)
+	messages, err := a.buildMessages(connectionID, mcpMode, db)
 	if err != nil {
 		return err
 	}
@@ -298,10 +303,10 @@ func (a *AIService) consumeStream(ctx context.Context, stream io.ReadCloser, con
 	return fullContent.String(), nil
 }
 
-func (a *AIService) buildMessages(connectionID string, mcpMode bool) ([]ChatMessage, error) {
-	systemPrompt := a.buildSystemPrompt(connectionID)
+func (a *AIService) buildMessages(connectionID string, mcpMode bool, database string) ([]ChatMessage, error) {
+	systemPrompt := a.buildSystemPrompt(connectionID, database)
 	if mcpMode {
-		systemPrompt = a.buildMCPSystemPrompt(connectionID)
+		systemPrompt = a.buildMCPSystemPrompt(connectionID, database)
 	}
 	messages := []ChatMessage{
 		{Role: "system", Content: systemPrompt},
@@ -361,7 +366,7 @@ func (a *AIService) expandTableMentions(connectionID, message string) string {
 	})
 }
 
-func (a *AIService) buildSystemPrompt(connectionID string) string {
+func (a *AIService) buildSystemPrompt(connectionID string, database string) string {
 	var sb strings.Builder
 
 	dbType := a.connService.GetConnectionType(connectionID)
@@ -373,7 +378,19 @@ func (a *AIService) buildSystemPrompt(connectionID string) string {
 		sb.WriteString("You are a database assistant integrated into SoftDB, a database management tool.\n")
 	}
 
-	tables, err := a.schemaService.GetTables(connectionID)
+	sb.WriteString(fmt.Sprintf("Database engine: %s\n", dbType))
+	if database != "" {
+		sb.WriteString(fmt.Sprintf("Active database: %s\n", database))
+	}
+
+	var tables []driver.TableInfo
+	var err error
+	if database != "" {
+		tables, err = a.schemaService.GetTablesForDB(connectionID, database)
+	} else {
+		tables, err = a.schemaService.GetTables(connectionID)
+	}
+
 	if err == nil && len(tables) > 0 {
 		if isMongo {
 			sb.WriteString("\nAvailable collections and their fields:\n")
@@ -388,7 +405,12 @@ func (a *AIService) buildSystemPrompt(connectionID string) string {
 			sb.WriteString(fmt.Sprintf("\n- %s", table.Name))
 
 			if i < 10 {
-				cols, err := a.schemaService.GetColumns(connectionID, table.Name)
+				var cols []driver.ColumnInfo
+				if database != "" {
+					cols, err = a.schemaService.GetColumnsForDB(connectionID, database, table.Name)
+				} else {
+					cols, err = a.schemaService.GetColumns(connectionID, table.Name)
+				}
 				if err == nil {
 					sb.WriteString(" (")
 					for j, col := range cols {
@@ -444,8 +466,8 @@ func (a *AIService) buildSystemPrompt(connectionID string) string {
 
 // ─── MCP Mode ───
 
-func (a *AIService) buildMCPSystemPrompt(connectionID string) string {
-	base := a.buildSystemPrompt(connectionID)
+func (a *AIService) buildMCPSystemPrompt(connectionID string, database string) string {
+	base := a.buildSystemPrompt(connectionID, database)
 
 	var sb strings.Builder
 	sb.WriteString(base)

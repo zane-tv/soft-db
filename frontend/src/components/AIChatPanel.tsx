@@ -9,6 +9,7 @@ import * as AIService from '../../bindings/soft-db/services/aiservice'
 
 interface AIChatPanelProps {
   connectionId: string
+  database?: string
   visible: boolean
   onClose: () => void
   onInsertToEditor?: (code: string) => void
@@ -22,7 +23,7 @@ const MAX_WIDTH = 600
 const DEFAULT_WIDTH = 340
 const STORAGE_KEY = 'ai-panel-width'
 
-export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, prefillText, prefillMode = 'append', onPrefillConsumed }: AIChatPanelProps) {
+export function AIChatPanel({ connectionId, database, visible, onClose, onInsertToEditor, prefillText, prefillMode = 'append', onPrefillConsumed }: AIChatPanelProps) {
   const { isLoggedIn, login, logout, isExpired, email } = useAuth()
   const { models, selectedModel, setModel } = useModelSelection(connectionId)
   const {
@@ -137,7 +138,7 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
     if (!msg || !canSend) return
     setInput('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
-    sendMessage(msg, selectedModel, mcpModeEnabled)
+    sendMessage(msg, selectedModel, mcpModeEnabled, database)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

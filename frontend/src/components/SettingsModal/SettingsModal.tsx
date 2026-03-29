@@ -4,6 +4,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { useTheme, ThemeOption, type ThemeId } from '@/hooks/useTheme'
 import { useSettingsContext, type AppSettings } from '@/hooks/useSettings'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
+import { useUpdate } from '@/hooks/useUpdate'
 import * as MCPService from '../../../bindings/soft-db/services/mcpservice'
 import { MCP } from '@lobehub/icons'
 
@@ -34,6 +35,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { settings, updateSetting } = useSettingsContext()
   const { theme, setTheme, themes } = useTheme()
   const { t } = useTranslation((settings.language as Language) || 'en')
+  const { version } = useUpdate()
   const sections = getSections(t)
 
   useFocusTrap(modalRef, open, onClose)
@@ -133,7 +135,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <MCPSection settings={settings} updateSetting={updateSetting} t={t} />
             )}
             {activeSection === 'about' && (
-              <AboutSection t={t} />
+              <AboutSection t={t} version={version} />
             )}
           </div>
 
@@ -507,16 +509,16 @@ const DATABASES = [
   { name: 'Redshift', color: '#8C4FFF' },
 ]
 
-function AboutSection({ t }: { t: (key: TranslationKey) => string }) {
+function AboutSection({ t, version }: { t: (key: TranslationKey) => string; version: string }) {
   return (
     <div className="space-y-6">
       {/* App Info */}
       <div className="text-center py-4">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 mb-3">
-          <span className="material-symbols-outlined text-[32px] text-primary">database</span>
+          <img src="/softdb-logo.png" alt="SoftDB" className="size-10 rounded-lg" />
         </div>
         <h3 className="text-xl font-bold text-text-main">SoftDB</h3>
-        <p className="text-xs text-text-muted mt-1">{t('about.version')} 1.0.2</p>
+        <p className="text-xs text-text-muted mt-1">{t('about.version')} {version}</p>
         <p className="text-sm text-text-muted mt-2 max-w-sm mx-auto">{t('about.description')}</p>
       </div>
 
@@ -569,15 +571,27 @@ function AboutSection({ t }: { t: (key: TranslationKey) => string }) {
       {/* Credits */}
       <div className="text-center pt-2 space-y-1">
         <p className="text-xs text-text-muted/60">{t('about.license')}</p>
-        <a
-          href="https://github.com/zane-tv/soft-db"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-hover transition-colors"
-        >
-          <span className="material-symbols-outlined text-[14px]">open_in_new</span>
-          GitHub
-        </a>
+        <div className="flex items-center justify-center gap-3">
+          <a
+            href="https://softdb.site"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-hover transition-colors"
+          >
+            <span className="material-symbols-outlined text-[14px]">menu_book</span>
+            Docs
+          </a>
+          <span className="text-text-muted/30">·</span>
+          <a
+            href="https://github.com/zane-tv/soft-db"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-hover transition-colors"
+          >
+            <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+            GitHub
+          </a>
+        </div>
       </div>
     </div>
   )

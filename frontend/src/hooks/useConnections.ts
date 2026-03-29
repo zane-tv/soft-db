@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Call } from '@wailsio/runtime'
 import * as ConnectionService from '../../bindings/soft-db/services/connectionservice'
 import { ConnectionConfig } from '../../bindings/soft-db/internal/driver/models'
 
@@ -73,6 +74,27 @@ export function useDisconnect() {
     mutationFn: (id: string) => ConnectionService.Disconnect(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: connectionKeys.list() })
+    },
+  })
+}
+
+export function useSetMCPEnabled() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      Call.ByName('soft-db/services.ConnectionService.SetMCPEnabled', id, enabled),
+    onMutate: async ({ id, enabled }) => {
+      await qc.cancelQueries({ queryKey: connectionKeys.list() })
+      const prev = qc.getQueryData<ConnectionConfig[]>(connectionKeys.list())
+      if (prev) {
+        qc.setQueryData(connectionKeys.list(), prev.map(c =>
+          c.id === id ? { ...c, mcpEnabled: enabled } : c
+        ))
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(connectionKeys.list(), ctx.prev)
     },
   })
 }
