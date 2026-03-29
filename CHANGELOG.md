@@ -5,6 +5,20 @@ All notable changes to SoftDB will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-03-29
+
+### Added
+
+- **Database switcher** — Inline dropdown in the Explorer sidebar lets you switch between databases without collapsing the table tree back to the multi-DB view
+- **Auto-select default database** — When opening a multi-DB connection, the configured database is auto-selected so tables load immediately
+
+### Changed
+
+- **MCP icon** — Replaced generic Material Symbols with the official [Model Context Protocol](https://modelcontextprotocol.io/) logo from `@lobehub/icons` across Connection Hub, Settings, and AI chat
+- **MCP chat toggle** — Converted the MCP icon button in the AI chat header to a compact labeled switch (`MCP [ON/OFF]`) for clearer state visibility
+- **MCP SDK** — Promoted `modelcontextprotocol/go-sdk` from indirect to direct dependency in `go.mod`
+- **Docs site** — Wider landing page layout, fixed hero image sizing, improved card grid, and eliminated horizontal overflow on mobile
+
 ## [1.4.0] - 2026-03-29
 
 ### Added

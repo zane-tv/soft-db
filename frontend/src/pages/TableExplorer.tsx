@@ -77,6 +77,14 @@ export function TableExplorer({ connectionId }: TableExplorerProps) {
   const cached = explorerStateCache.get(connectionId)
   const [selectedTable, setSelectedTable] = useState<string | null>(cached?.selectedTable ?? null)
   const [selectedDatabase, setSelectedDatabase] = useState<string | null>(cached?.selectedDatabase ?? null)
+
+  const initialDbApplied = useRef(!!cached?.selectedDatabase)
+  useEffect(() => {
+    if (!initialDbApplied.current && conn?.database && selectedDatabase === null) {
+      setSelectedDatabase(conn.database)
+      initialDbApplied.current = true
+    }
+  }, [conn?.database, selectedDatabase])
   const [tabs, setTabs] = useState<QueryTab[]>(cached?.tabs ?? [
     { id: '1', title: `Query 1.${fileExt}`, query: '', result: null, lastExecutedQuery: '', pkColumns: [] },
   ])

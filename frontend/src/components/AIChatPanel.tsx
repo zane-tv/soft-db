@@ -177,11 +177,17 @@ export function AIChatPanel({ connectionId, visible, onClose, onInsertToEditor, 
           {isLoggedIn && connHasMCP && (
             <button
               type="button"
-              className={`ai-icon-btn ${mcpModeEnabled ? 'ai-mcp-active' : ''}`}
+              role="switch"
+              aria-checked={mcpModeEnabled}
+              aria-label="Toggle MCP mode"
+              className="ai-mcp-switch"
               onClick={() => setMCPModeMutation.mutate(!mcpModeEnabled)}
               title={mcpModeEnabled ? 'MCP Mode: ON — AI can query your database (read-only)' : 'MCP Mode: OFF — Schema context only'}
             >
-              <span className={`material-symbols-outlined text-[14px] ${mcpModeEnabled ? 'text-primary' : ''}`}>hub</span>
+              <span className="ai-mcp-switch-label">MCP</span>
+              <span className={`ai-mcp-switch-track ${mcpModeEnabled ? 'ai-mcp-switch-on' : ''}`}>
+                <span className="ai-mcp-switch-thumb" />
+              </span>
             </button>
           )}
           {isLoggedIn && (

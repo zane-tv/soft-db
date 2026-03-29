@@ -64,7 +64,9 @@ Connection
 
 Unlike PostgreSQL, MySQL doesn't require a reconnect to switch databases. SoftDB issues a `USE <database>` statement to switch context, so browsing across databases is fast.
 
-If you specify a database name in the connection settings, only that database appears in the tree.
+Once you're inside a database, a **database switcher** dropdown appears at the top of the sidebar. Use it to jump between databases without collapsing back to the multi-DB tree view.
+
+If you specify a database name in the connection settings, only that database appears in the tree and is auto-selected when you open the connection.
 
 ## Structure Designer
 

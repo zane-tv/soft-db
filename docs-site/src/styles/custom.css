@@ -97,6 +97,7 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -245,12 +246,23 @@ nav.sidebar summary {
   padding-block: 0.5rem;
 }
 
+/* ── Splash Page — Wider Layout ────────────────────────────────────────────── */
+
+/* Landing pages use a wider container so hero + cards aren't cramped */
+[data-has-hero] .content-panel .sl-container {
+  max-width: 72rem;
+}
+
 /* ── Hero Section ──────────────────────────────────────────────────────────── */
 
 .hero {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
   padding-block: 5rem 4rem;
+  padding-inline: max(2rem, calc((100vw - 72rem) / 2));
   background: var(--sdb-gradient-hero);
   position: relative;
+  box-sizing: border-box;
 }
 
 .hero::before {
@@ -322,8 +334,9 @@ nav.sidebar summary {
   transform: translateY(-1px);
 }
 
-/* Hero image */
 .hero img {
+  width: 100%;
+  height: auto;
   border-radius: var(--sdb-radius-lg);
   border: 1px solid var(--sl-color-hairline-light);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05);

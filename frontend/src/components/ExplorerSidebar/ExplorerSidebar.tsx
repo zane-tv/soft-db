@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
-import { useHasMultiDB, useDropTable } from '@/hooks/useSchema'
+import { useHasMultiDB, useDatabases, useDropTable } from '@/hooks/useSchema'
 import { useSettings } from '@/hooks/useSettings'
 import { useTranslation } from '@/lib/i18n'
 import { TableContextMenu } from '../TableContextMenu'
@@ -107,6 +107,7 @@ export function ExplorerSidebar({
   }
 
   const { data: hasMultiDB } = useHasMultiDB(connectionId)
+  const { data: databases = [] } = useDatabases(hasMultiDB ? connectionId : '')
   const isRedis = connType === 'redis'
 
   const filterLower = searchFilter.toLowerCase()
@@ -219,7 +220,7 @@ export function ExplorerSidebar({
         onKeyDown={handleTreeKeyDown}
         className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-3 outline-none"
       >
-        {hasMultiDB ? (
+        {hasMultiDB && !selectedDatabase ? (
           <MultiDBTree
             connectionId={connectionId}
             selectedTable={selectedTable}
@@ -233,6 +234,23 @@ export function ExplorerSidebar({
           />
         ) : (
           <>
+            {hasMultiDB && selectedDatabase && databases.length > 0 && (
+              <div className="px-1 mb-2">
+                <div className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px] text-primary/70 shrink-0">database</span>
+                  <select
+                    value={selectedDatabase}
+                    onChange={(e) => onDatabaseSelect?.(e.target.value)}
+                    className="flex-1 min-w-0 bg-bg-app/50 border border-border-subtle/30 rounded-md px-1.5 py-1 text-[11px] text-text-main focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all truncate"
+                  >
+                    {databases.map((db: { name: string }) => (
+                      <option key={db.name} value={db.name}>{db.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
             <TreeSection label={isRedis ? t('explorer.keys') : 'Tables'} icon="table_chart" count={filteredTables.length} isLoading={tablesLoading} onAdd={isRedis ? undefined : onCreateTable}>
               {filteredTables.map((tbl, idx) => (
                 <TableTreeItem

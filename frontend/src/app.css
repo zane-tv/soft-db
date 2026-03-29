@@ -397,12 +397,57 @@ html[data-theme="dracula"] ::-webkit-scrollbar-thumb:hover {
   color: var(--color-text-main);
   background: var(--color-bg-hover);
 }
-.ai-mcp-active {
-  color: var(--color-primary) !important;
-  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+/* MCP small switch in chat header */
+.ai-mcp-switch {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
 }
-.ai-mcp-active:hover {
-  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+.ai-mcp-switch:hover {
+  background: var(--color-bg-hover);
+}
+.ai-mcp-switch-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+.ai-mcp-switch-track {
+  position: relative;
+  width: 26px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border-subtle);
+  transition: all 0.2s;
+}
+.ai-mcp-switch-track.ai-mcp-switch-on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.ai-mcp-switch-track.ai-mcp-switch-on .ai-mcp-switch-thumb {
+  transform: translateX(12px);
+  background: #fff;
+}
+.ai-mcp-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  transition: all 0.2s;
+}
+.ai-mcp-switch:hover .ai-mcp-switch-label {
+  color: var(--color-text-main);
 }
 
 /* Account bar */

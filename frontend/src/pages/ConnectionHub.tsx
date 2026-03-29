@@ -17,6 +17,7 @@ import { ChangelogModal } from '@/components/ChangelogModal'
 import { ExportModal } from '@/components/ExportModal'
 import { ImportModal } from '@/components/ImportModal'
 import { useUpdate } from '@/hooks/useUpdate'
+import { MCP } from '@lobehub/icons'
 
 // ─── Date Formatter ───
 const LOCALE_MAP: Record<string, string> = { en: 'en-US', vi: 'vi-VN' }
@@ -492,7 +493,7 @@ function ConnectionCard({ conn, colors, onClick, onMenuClick, onMCPToggle }: Con
                 : 'text-text-muted/40 hover:text-text-muted hover:bg-white/5'
             }`}
           >
-            <span className="material-symbols-outlined text-[16px]">hub</span>
+            <MCP size={16} />
           </button>
           <button
             onClick={onMenuClick}

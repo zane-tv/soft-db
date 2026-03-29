@@ -5,6 +5,7 @@ import { useTheme, ThemeOption, type ThemeId } from '@/hooks/useTheme'
 import { useSettingsContext, type AppSettings } from '@/hooks/useSettings'
 import { useTranslation, type Language, type TranslationKey } from '@/lib/i18n'
 import * as MCPService from '../../../bindings/soft-db/services/mcpservice'
+import { MCP } from '@lobehub/icons'
 
 interface SettingsModalProps {
   open: boolean
@@ -21,7 +22,7 @@ function getSections(t: (key: TranslationKey) => string): { id: SectionId; label
     { id: 'execution', label: t('settings.execution'), icon: 'bolt' },
     { id: 'connection', label: t('settings.connection'), icon: 'cable' },
     { id: 'data', label: t('settings.data'), icon: 'table_chart' },
-    { id: 'mcp', label: 'MCP Server', icon: 'hub' },
+    { id: 'mcp', label: 'MCP Server', icon: 'developer_mode' },
     { id: 'about', label: t('settings.about'), icon: 'info' },
   ]
 }
@@ -166,7 +167,7 @@ function SettingRow({
   description,
   children,
 }: {
-  icon: string
+  icon: string | React.ReactNode
   label: string
   description?: string
   children: React.ReactNode
@@ -174,7 +175,11 @@ function SettingRow({
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-border-subtle/20 last:border-0">
       <div className="flex items-start gap-3 flex-1 min-w-0">
-        <span className="material-symbols-outlined text-[18px] text-text-muted mt-0.5 shrink-0">{icon}</span>
+        {typeof icon === 'string' ? (
+          <span className="material-symbols-outlined text-[18px] text-text-muted mt-0.5 shrink-0">{icon}</span>
+        ) : (
+          <span className="text-text-muted mt-0.5 shrink-0 flex items-center">{icon}</span>
+        )}
         <div>
           <span className="text-sm font-medium text-text-main">{label}</span>
           {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
@@ -680,7 +685,7 @@ function MCPSection({ settings, updateSetting }: SectionProps) {
   return (
     <>
       <SettingRow
-        icon="hub"
+        icon={<MCP size={18} />}
         label="Enable MCP Server"
         description="Allow AI agents (Claude, Cursor) to connect to your databases via MCP protocol"
       >
