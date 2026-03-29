@@ -5,6 +5,28 @@ All notable changes to SoftDB will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-29
+
+### Added
+
+- **MCP Server** — Built-in [Model Context Protocol](https://modelcontextprotocol.io/) server with 8 database tools (`list_connections`, `use_connection`, `list_databases`, `list_tables`, `describe_table`, `execute_query`, `read_table`, `get_relationships`). Lets AI tools like Claude Desktop, Cursor, and Windsurf browse schemas, run queries, and explore your databases.
+- **MCP settings UI** — Per-connection MCP toggle in the frontend settings panel
+- **MCP mode for AI chat** — Toggle read-only database access for the built-in AI assistant
+- **Documentation site** — Full docs at [softdb.site](https://softdb.site) built with Starlight, covering Getting Started, Databases, Customization, Security, and MCP Server configuration
+- **MCP unit & integration tests** — Comprehensive test coverage for all MCP tool handlers
+
+### Fixed
+
+- SafeMode now properly enforced for MongoDB and Redis connections via MCP
+- `get_relationships` works correctly for SQLite databases
+- AI provider info corrected to OpenAI only (removed stale Anthropic/Ollama references)
+
+### Changed
+
+- Documentation site redesigned with premium Starlight theme, indigo accent, and responsive layout
+- Home page updated with competitor comparison table and full feature coverage
+- Added macOS Gatekeeper instructions to installation docs
+
 ## [1.3.0] - 2026-03-27
 
 ### Added
