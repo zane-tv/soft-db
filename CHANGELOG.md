@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Database switcher** — Inline dropdown in the Explorer sidebar lets you switch between databases without collapsing the table tree back to the multi-DB view
 - **Auto-select default database** — When opening a multi-DB connection, the configured database is auto-selected so tables load immediately
+- **MCP auto-start** — MCP server now starts automatically on app launch when enabled in settings (no more manual toggle after restart)
+- **MCP badge on cards** — Connection Hub cards show a persistent `MCP` badge (blue when enabled, dim when disabled) so you can tell at a glance which connections allow AI access
+
+### Fixed
+
+- **MCP toggle no longer re-sorts connections** — Toggling MCP on a card used to call SaveConnection which reset `updated_at` and `status`, causing the card to jump to top. Now uses a lightweight `SetMCPEnabled` endpoint with optimistic update
+- **AI assistant now knows your active database** — In multi-DB mode, the AI system prompt includes the selected database name, engine type, and fetches schema from that specific database instead of the default
 
 ### Changed
 
