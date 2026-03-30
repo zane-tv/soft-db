@@ -12,8 +12,33 @@ vars:
   APP_NAME: "SoftDB"
   BIN_DIR: "bin"
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  APP_VERSION:
+    sh: git describe --tags --abbrev=0 2>/dev/null || echo "dev"
+  APP_SEMVER:
+    sh: git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0"
 
 tasks:
+  sync:version:
+    summary: Syncs version from git tag into build/config.yml and frontend/package.json
+    desc: |
+      Reads the latest git tag and updates all version references.
+      Run manually or let it run automatically as a build dependency.
+    vars:
+      VERSION:
+        sh: git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0"
+    cmds:
+      - |
+        VERSION="{{.VERSION}}"
+        echo "Syncing version: $VERSION"
+        # Update build/config.yml (info.version, 2-space indented)
+        sed -i.bak 's/^  version: ".*"/  version: "'"$VERSION"'"/' build/config.yml && rm -f build/config.yml.bak
+        # Update frontend/package.json
+        sed -i.bak 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' frontend/package.json && rm -f frontend/package.json.bak
+        echo "✅ Version synced to $VERSION"
+    status:
+      - |
+        VERSION="$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')"
+        grep -q "version: \"$VERSION\"" build/config.yml && grep -q "\"version\": \"$VERSION\"" frontend/package.json
   build:
     summary: Builds the application
     cmds:
@@ -58,6 +83,16 @@ tasks:
     summary: Builds and runs the Docker image
     cmds:
       - task: common:run:docker
+
+  setup:hooks:
+    summary: Configures git to use project hooks from .githooks/
+    desc: |
+      Run once after cloning to enable auto version sync on checkout/pull.
+    cmds:
+      - git config core.hooksPath .githooks
+      - echo "✅ Git hooks configured from .githooks/"
+    status:
+      - git config core.hooksPath | grep -q '.githooks'
 
   test:
     summary: Runs backend tests

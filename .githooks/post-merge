@@ -1,0 +1,9 @@
+#!/bin/sh
+# Auto-sync version from git tag after pull/merge
+# Reuses the same logic as post-checkout
+
+HOOK_DIR=$(dirname "$0")
+if [ -x "$HOOK_DIR/post-checkout" ]; then
+  # Simulate branch checkout ($3=1)
+  "$HOOK_DIR/post-checkout" "" "" "1"
+fi

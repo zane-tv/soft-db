@@ -39,6 +39,12 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
+      - name: Sync version from git tag
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          task sync:version
+        shell: bash
+
       - name: Build & Create NSIS Installer
         run: wails3 task windows:package
         shell: cmd
@@ -72,6 +78,11 @@ jobs:
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Sync version from git tag
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          task sync:version
 
       - name: Build & Package .app bundle
         run: wails3 task darwin:package
@@ -129,6 +140,11 @@ jobs:
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: Sync version from git tag
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          task sync:version
 
       - name: Build
         env:

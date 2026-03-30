@@ -1,0 +1,42 @@
+#!/bin/sh
+# Auto-sync version from git tag after checkout
+# Runs on: git checkout, git switch, git pull (via post-merge)
+
+# Only run on branch checkout (not file checkout)
+# $3 = 1 for branch checkout, 0 for file checkout
+if [ "$3" = "0" ] 2>/dev/null; then
+  exit 0
+fi
+
+sync_version() {
+  VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+  if [ "$VERSION" = "0.0.0" ]; then
+    return
+  fi
+
+  CHANGED=0
+
+  # Update build/config.yml
+  if [ -f build/config.yml ]; then
+    CURRENT=$(grep '^\s*version:' build/config.yml | grep -v "^version:" | sed 's/.*"\(.*\)".*/\1/' | head -1)
+    if [ "$CURRENT" != "$VERSION" ]; then
+      sed -i.bak 's/^  version: ".*"/  version: "'"$VERSION"'"/' build/config.yml && rm -f build/config.yml.bak
+      CHANGED=1
+    fi
+  fi
+
+  # Update frontend/package.json
+  if [ -f frontend/package.json ]; then
+    CURRENT=$(grep '"version"' frontend/package.json | head -1 | sed 's/.*"\([0-9][^"]*\)".*/\1/')
+    if [ "$CURRENT" != "$VERSION" ]; then
+      sed -i.bak 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' frontend/package.json && rm -f frontend/package.json.bak
+      CHANGED=1
+    fi
+  fi
+
+  if [ "$CHANGED" = "1" ]; then
+    echo "🔄 Version synced to $VERSION"
+  fi
+}
+
+sync_version
