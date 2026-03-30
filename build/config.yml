@@ -11,7 +11,7 @@ info:
   description: "Modern Database Management Tool"
   copyright: "(c) 2025-2026, ZaneDev"
   comments: "A modern, cross-platform database management tool supporting PostgreSQL, MySQL, MariaDB, SQLite, MongoDB, and Redshift."
-  version: "1.4.1"
+  version: "1.4.2"
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension
   #                               # If not set and Assets.car exists, defaults to "appicon"
